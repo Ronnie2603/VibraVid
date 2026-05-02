@@ -13,6 +13,7 @@ def get_session_and_csrf() -> dict:
     # Send an initial GET request to the website
     client = create_client(headers=get_headers())
     response = client.get(site_constants.FULL_URL)
+    client.close()
     session_id = response.cookies.get('sessionId')
     soup = BeautifulSoup(response.text, 'html.parser')
 

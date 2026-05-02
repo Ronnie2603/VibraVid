@@ -39,6 +39,11 @@ class GetSerieInfo:
         self.series_name = ""
         self.stagioni_disponibili = []
 
+    def close(self):
+        """Close the HTTP client session."""
+        if self.client:
+            self.client.close()
+
     def _extract_serie_id(self):
         """Extract the series ID from the starting URL"""
         try:

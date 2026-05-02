@@ -41,7 +41,9 @@ def download_film(select_title: Entries) -> str:
 
     try:
         url = f"https://mostraguarda.stream/set-movie-a/{imdb_id}"
-        response = create_client(headers=get_headers()).get(url)
+        client = create_client(headers=get_headers())
+        response = client.get(url)
+        client.close()
         response.raise_for_status()
 
     except Exception as e:

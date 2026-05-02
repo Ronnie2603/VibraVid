@@ -45,6 +45,7 @@
     "REQUESTS": {
         "timeout": 20,
         "max_retry": 8,
+        "verify": true,
         "use_proxy": false,
         "proxy": {
             "http": "http://localhost:8888",

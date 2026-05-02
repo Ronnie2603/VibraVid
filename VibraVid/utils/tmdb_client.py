@@ -37,7 +37,9 @@ class TMDBClient:
         
         for attempt in range(retries + 1):
             try:
-                response = create_client(headers=get_headers()).get(url, params=params)
+                client = create_client(headers=get_headers())
+                response = client.get(url, params=params)
+                client.close()
                 response.raise_for_status()
                 return response.json()
             

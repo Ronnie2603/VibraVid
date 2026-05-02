@@ -38,7 +38,9 @@ class GetSerieInfo:
                 'include': 'default',
                 'decorators': 'viewingHistory,badges,isFavorite,contentAction'
             }
-            response = create_client(headers=self.client.headers, cookies=self.client.cookies).get(url, params=params)
+            client = create_client(headers=self.client.headers, cookies=self.client.cookies)
+            response = client.get(url, params=params)
+            client.close()
             response.raise_for_status()
             data = response.json()
 
@@ -73,7 +75,9 @@ class GetSerieInfo:
                     'include': 'default',
                     'decorators': 'viewingHistory,badges,isFavorite,contentAction',
                 }
-                response = create_client(headers=self.client.headers, cookies=self.client.cookies).get(coll_url, params=coll_params)
+                client = create_client(headers=self.client.headers, cookies=self.client.cookies)
+                response = client.get(coll_url, params=coll_params)
+                client.close()
                 response.raise_for_status()
                 season_data = response.json()
 

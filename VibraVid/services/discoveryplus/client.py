@@ -46,7 +46,9 @@ class DiscoveryPlus:
             print("Generating anonymous ST token...")
             token_url = "https://default.any-any.prd.api.discoveryplus.com/token"
             params = {"realm": "bolt", "deviceId": self.device_id}
-            response = create_client(headers=self.base_headers, cookies=self.cookies).get(token_url, params=params)
+            client = create_client(headers=self.base_headers, cookies=self.cookies)
+            response = client.get(token_url, params=params)
+            client.close()
             response.raise_for_status()
             data = response.json()
             self.access_token = data['data']['attributes']['token']
@@ -55,7 +57,9 @@ class DiscoveryPlus:
         bootstrap_url = "https://default.any-any.prd.api.discoveryplus.com/session-context/headwaiter/v1/bootstrap"
         headers = self.base_headers.copy()
         headers['Authorization'] = f'Bearer {self.access_token}'
-        response = create_client(headers=headers, cookies=self.cookies).post(bootstrap_url)
+        client = create_client(headers=headers, cookies=self.cookies)
+        response = client.post(bootstrap_url)
+        client.close()
         response.raise_for_status()
         config = response.json()
         tenant = config['routing']['tenant']
@@ -130,7 +134,9 @@ class DiscoveryPlus:
         }
 
         url = f"{self.base_url}/playback-orchestrator/any/playback-orchestrator/v1/playbackInfo"
-        response = create_client(headers=self.headers, cookies=self.cookies).post(url, json=payload)
+        client = create_client(headers=self.headers, cookies=self.cookies)
+        response = client.post(url, json=payload)
+        client.close()
         response.raise_for_status()
         data = response.json()
         

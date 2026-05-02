@@ -50,7 +50,9 @@ class VideoSource:
             }
 
         try:
-            response = create_client(headers=self.headers).get(f"{self.url}/iframe/{self.media_id}", params=params)
+            client = create_client(headers=self.headers)
+            response = client.get(f"{self.url}/iframe/{self.media_id}", params=params)
+            client.close()
             response.raise_for_status()
 
             # Parse response with BeautifulSoup to get iframe source
@@ -96,7 +98,9 @@ class VideoSource:
         """
         try:
             if self.iframe_src is not None:
-                response = create_client(headers=self.headers).get(self.iframe_src)
+                client = create_client(headers=self.headers)
+                response = client.get(self.iframe_src)
+                client.close()
                 response.raise_for_status()
 
                 # Parse response with BeautifulSoup to get content
@@ -170,7 +174,9 @@ class VideoSourceAnime(VideoSource):
             str: Parsed script content
         """
         try:
-            response = create_client(headers=self.headers).get(f"{self.url}/embed-url/{episode_id}")
+            client = create_client(headers=self.headers)
+            response = client.get(f"{self.url}/embed-url/{episode_id}")
+            client.close()
             response.raise_for_status()
 
             # Extract and clean embed URL
@@ -178,7 +184,9 @@ class VideoSourceAnime(VideoSource):
             self.iframe_src = embed_url
 
             # Fetch video content using embed URL
-            video_response = create_client(headers=self.headers).get(embed_url)
+            client = create_client(headers=self.headers)
+            video_response = client.get(embed_url)
+            client.close()
             video_response.raise_for_status()
 
             # Parse response with BeautifulSoup to get content of the scriot

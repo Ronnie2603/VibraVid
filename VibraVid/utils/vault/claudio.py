@@ -22,6 +22,11 @@ class ClaudioDBVault:
         self.headers = {"Content-Type": "application/json"}
         self.session = create_client(headers=self.headers, http2=True)
 
+    def close(self):
+        """Close the HTTP session."""
+        if self.session:
+            self.session.close()
+
     def _clean_license_url(self, license_url: str) -> str:
         """Extract base URL from license URL (remove query parameters and fragments)"""
         if not license_url:

@@ -29,7 +29,9 @@ class GetSerieInfo:
         Retrieve general information about the TV series from the streaming site.
         """
         try:
-            response = create_client(headers=self.headers).get(self.url)
+            client = create_client(headers=self.headers)
+            response = client.get(self.url)
+            client.close()
             response.raise_for_status()
 
             # Parse JSON response

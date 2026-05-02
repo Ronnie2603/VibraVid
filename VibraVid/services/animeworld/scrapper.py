@@ -26,6 +26,11 @@ class ScrapSerie:
         except Exception as e:
             raise Exception(f"Failed to retrieve anime page: {str(e)}")
 
+    def close(self):
+        """Close the HTTP client session."""
+        if self.client:
+            self.client.close()
+
     def get_name(self):
         """Extract and return the name of the anime series."""
         soup = BeautifulSoup(self.response.content, "html.parser")

@@ -38,7 +38,9 @@ def title_search(query: str) -> int:
 
     # Make the GET request
     try:
-        response = create_client(headers=get_headers()).get(search_url)
+        client = create_client(headers=get_headers())
+        response = client.get(search_url)
+        client.close()
     except Exception as e:
         console.print(f"[red]Site: {site_constants.SITE_NAME}, request search error: {e}")
         return 0

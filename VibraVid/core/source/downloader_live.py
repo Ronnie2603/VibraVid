@@ -87,7 +87,6 @@ class LiveDownloadMixin:
         seg_index: int = 0
         seg_done: int = 0
         total_bytes: int = 0
-        elapsed_dur: float = 0.0  # accumulated segment duration (HLS #EXTINF)
 
         probe_done: bool = False
         probe_lock = threading.Lock()
@@ -218,23 +217,7 @@ class LiveDownloadMixin:
             # Download & process
             if fresh_segs:
                 last_fresh_segs = fresh_segs
-                dl_batch = [
-                    {
-                        "url":      seg["url"],
-                        "number":   seg_index + i,
-                        "seg_type": "media",
-                        "enc":      seg["enc"],
-                    }
-                    for i, seg in enumerate(fresh_segs)
-                ]
                 seg_index += len(fresh_segs)
-
-                batch_t0 = time.monotonic()
-                batch_paths = self._live_download_batch(dl_batch, stream_dir, all_headers, stream)
-                batch_bytes = _process_batch(dl_batch, batch_paths)
-                elapsed = max(time.monotonic() - batch_t0, 0.001)
-                speed_bps = batch_bytes / elapsed
-
                 _emit_live_progress(bar_manager, task_key, seg_done, total_bytes, 0.0, 0.0)
                 logger.info(f"Live HLS download started | url={playlist_url}")
 

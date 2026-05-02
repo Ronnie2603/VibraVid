@@ -43,7 +43,9 @@ def title_search(query: str) -> int:
         console.print(f"[cyan]Searching in language: [yellow]{lang}")
         
         try:
-            response = create_client(headers={'user-agent': get_userAgent()}).get(f"{site_constants.FULL_URL}/{lang}")
+            client = create_client(headers={'user-agent': get_userAgent()})
+            response = client.get(f"{site_constants.FULL_URL}/{lang}")
+            client.close()
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             version = json.loads(soup.find('div', {'id': "app"}).get("data-page"))['version']
@@ -55,7 +57,9 @@ def title_search(query: str) -> int:
         console.print(f"[cyan]Search url: [yellow]{search_url}")
 
         try:
-            response = create_client(headers={'user-agent': get_userAgent(), 'x-inertia': 'true', 'x-inertia-version': version}).get(search_url)
+            client = create_client(headers={'user-agent': get_userAgent(), 'x-inertia': 'true', 'x-inertia-version': version})
+            response = client.get(search_url)
+            client.close()
             response.raise_for_status()
         except Exception as e:
             console.print(f"[red]Site: {site_constants.SITE_NAME} ({lang}), request search error: {e}")

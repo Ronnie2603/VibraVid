@@ -44,6 +44,11 @@ class CrunchyrollClient:
         
         self.session = create_client(headers=self._get_headers(), cookies=self._get_cookies())
 
+    def close(self):
+        """Close the HTTP session."""
+        if self.session:
+            self.session.close()
+
     @staticmethod
     def _resolve_api_base_url() -> str:
         """Determine the correct API base URL - defaults to beta API."""

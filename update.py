@@ -232,7 +232,9 @@ def download_and_extract_latest_commit():
             'Accept': 'application/vnd.github.v3+json',
             'User-Agent': f'{__title__}-updater'
         }
-        response = create_client(headers=headers).get(api_url)
+        client = create_client(headers=headers)
+        response = client.get(api_url)
+        client.close()
 
         if response.status_code == 200:
             commit_info = response.json()[0]
@@ -242,7 +244,9 @@ def download_and_extract_latest_commit():
             zipball_url = f'https://github.com/{__author__}/{__title__}/archive/{commit_sha}.zip'
             console.log("[green]Downloading latest commit zip file...")
 
-            response = create_client().get(zipball_url)
+            client = create_client()
+            response = client.get(zipball_url)
+            client.close()
             temp_path = os.path.join(os.path.dirname(os.getcwd()), 'temp_extracted')
 
             with ZipFile(BytesIO(response.content)) as zip_ref:

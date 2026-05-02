@@ -75,7 +75,9 @@ class BinaryPaths:
             try:
                 url = f"{self.github_repo}/binary_paths.json"
                 logger.info(f"Loading binary paths JSON from {url}")
-                response = create_client(headers=get_headers()).get(url)
+                client = create_client(headers=get_headers())
+                response = client.get(url)
+                client.close()
                 response.raise_for_status()
                 self._paths_json_cache = response.json()
                 logger.info(f"Loaded binary paths JSON ({len(self._paths_json_cache)} entries)")
@@ -154,7 +156,9 @@ class BinaryPaths:
                 # Write to a temporary file first, then rename atomically.
                 tmp_path = local_path + ".tmp"
                 try:
-                    response = create_client(headers=get_headers()).get(url)
+                    client = create_client(headers=get_headers())
+                    response = client.get(url)
+                    client.close()
                     response.raise_for_status()
 
                     with open(tmp_path, 'wb') as f:

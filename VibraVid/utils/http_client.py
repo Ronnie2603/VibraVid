@@ -5,11 +5,13 @@ import functools
 import json
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+
 from typing import Dict, Optional, Union
 
 import ua_generator
 from curl_cffi import requests
+from curl_cffi.const import CurlHttpVersion
 from curl_cffi.requests.impersonate import REAL_TARGET_MAP
 
 from VibraVid.utils import config_manager
@@ -26,6 +28,13 @@ def _get_timeout() -> int:
         return int(config_manager.config.get_int("REQUESTS", "timeout"))
     except Exception:
         return 20
+
+
+def _get_verify() -> bool:
+    try:
+        return bool(config_manager.config.get_bool("REQUESTS", "verify"))
+    except Exception:
+        return True
 
 
 def _get_proxies() -> Optional[Dict[str, str]]:
@@ -46,7 +55,7 @@ def _get_proxies() -> Optional[Dict[str, str]]:
 
 
 def get_proxy_url() -> Optional[str]:
-    """Return a single proxy URL string suitable for passing to the C# download binary"""
+    """Return a single proxy URL string suitable for passing to the C# download binary."""
     proxies = _get_proxies()
     if not proxies:
         return None
@@ -65,9 +74,14 @@ def get_available_browsers() -> Dict[str, str]:
     return dict(REAL_TARGET_MAP)
 
 
-def get_browser_impersonate(browser: str = "chrome") -> str:
+def get_browser_impersonate(browser: str = "chrome") -> Optional[str]:
     """Get the latest available browser impersonate version from curl_cffi."""
-    return get_available_browsers().get(browser.lower())
+    available = get_available_browsers()
+    result = available.get(browser.lower())
+    if result is None:
+        logger.warning(f"Browser '{browser}' not found in impersonate map, falling back to 'chrome'.")
+        result = available.get("chrome")
+    return result
 
 
 def create_client(
@@ -75,29 +89,66 @@ def create_client(
     headers: Optional[Dict[str, str]] = None,
     cookies: Optional[Dict[str, str]] = None,
     timeout: Optional[Union[int, float]] = None,
+    verify: Optional[bool] = None,
+    proxies: Optional[Dict[str, str]] = None,
+    http2: bool = False,
+    follow_redirects: bool = True,
+    browser: Optional[str] = "chrome",
+) -> requests.Session:
+    """Factory for a configured curl_cffi session."""
+    session = requests.Session()
+    session.headers.update(_default_headers(headers))
+
+    if cookies:
+        session.cookies.update(cookies)
+
+    session.timeout = timeout if timeout is not None else _get_timeout()
+    session.verify = _get_verify() if verify is None else verify
+
+    proxy_value = proxies if proxies is not None else _get_proxies()
+    if proxy_value:
+        session.proxies = proxy_value
+
+    if http2:
+        session.http_version = CurlHttpVersion.V2TLS
+
+    if browser:
+        impersonate = get_browser_impersonate(browser)
+        if impersonate:
+            session.impersonate = impersonate
+
+    session.allow_redirects = follow_redirects
+
+    return session
+
+
+@contextmanager
+def open_client(
+    *,
+    headers: Optional[Dict[str, str]] = None,
+    cookies: Optional[Dict[str, str]] = None,
+    timeout: Optional[Union[int, float]] = None,
+    verify: Optional[bool] = None,
     proxies: Optional[Dict[str, str]] = None,
     http2: bool = False,
     follow_redirects: bool = True,
     browser: Optional[str] = "chrome",
 ):
-    """
-    Factory for a configured curl_cffi session."""
-    session = requests.Session()
-    session.headers.update(_default_headers(headers))
-    if cookies:
-        session.cookies.update(cookies)
-
-    session.timeout = timeout if timeout is not None else _get_timeout()
-    proxy_value = proxies if proxies is not None else _get_proxies()
-    if proxy_value:
-        session.proxies = proxy_value
-
-    if browser:
-        session.impersonate = get_browser_impersonate(browser)
-
-    session.allow_redirects = follow_redirects
-
-    return session
+    """Context-manager wrapper around :func:`create_client`"""
+    session = create_client(
+        headers=headers,
+        cookies=cookies,
+        timeout=timeout,
+        verify=verify,
+        proxies=proxies,
+        http2=http2,
+        follow_redirects=follow_redirects,
+        browser=browser,
+    )
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 class AsyncStreamResponse:
@@ -129,7 +180,7 @@ class AsyncClient:
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
-            functools.partial(self.session.request, method, url, stream=True, **kwargs),  # FIX #9
+            functools.partial(self.session.request, method, url, stream=True, **kwargs),
         )
         try:
             yield AsyncStreamResponse(response)
@@ -183,16 +234,30 @@ async def create_async_client(
     follow_redirects: bool = True,
     browser: str = "chrome",
 ):
-    """
-    Factory for an async-compatible curl_cffi session wrapper."""
-    session = create_client(
-        headers=headers,
-        cookies=cookies,
-        timeout=timeout,
-        proxies=proxies,
-        follow_redirects=follow_redirects,
-        browser=browser,
-    )
+    """Context-manager factory for an async-compatible curl_cffi session wrapper."""
+    session = requests.Session()
+    session.headers.update(_default_headers(headers))
+
+    if cookies:
+        session.cookies.update(cookies)
+
+    session.timeout = timeout if timeout is not None else _get_timeout()
+    session.verify = _get_verify() if verify is None else verify
+
+    proxy_value = proxies if proxies is not None else _get_proxies()
+    if proxy_value:
+        session.proxies = proxy_value
+
+    if http2:
+        session.http_version = CurlHttpVersion.V2TLS
+
+    if browser:
+        impersonate = get_browser_impersonate(browser)
+        if impersonate:
+            session.impersonate = impersonate
+
+    session.allow_redirects = follow_redirects
+
     try:
         yield AsyncClient(session)
     finally:
@@ -214,7 +279,7 @@ def get_my_location() -> dict:
     try:
         url = "http://ip-api.com/json/?fields=status,country,countryCode,city,query"
 
-        with create_client(headers=get_headers()) as c:
+        with open_client(headers=get_headers()) as c:
             response = c.get(url, timeout=4)
 
         data = response.json()
@@ -262,6 +327,6 @@ def check_region_availability(allowed_regions: list, site_name: str) -> bool:
         logger.info(f"Region check passed for {site_name} ({current_country})")
 
     except Exception as e:
-        logger.error(f"Region check failed: {e}")
+        logger.error("Region check failed: %s", e)
 
     return True

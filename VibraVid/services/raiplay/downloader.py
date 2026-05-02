@@ -55,7 +55,9 @@ def download_film(select_title: Entries) -> Tuple[str, bool]:
     console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} → [cyan]{select_title.name} \n")
 
     # Extract m3u8 URL from the film's URL
-    response = create_client(headers=get_headers()).get(select_title.url + ".json")
+    client = create_client(headers=get_headers())
+    response = client.get(select_title.url + ".json")
+    client.close()
     first_item_path = "https://www.raiplay.it" + response.json().get("first_item_path")
     master_playlist = VideoSource.extract_m3u8_url(first_item_path)
 

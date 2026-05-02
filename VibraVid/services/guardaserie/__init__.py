@@ -37,7 +37,9 @@ def title_search(query: str) -> int:
     console.print(f"[cyan]Search url: [yellow]{search_url}")
 
     try:
-        response = create_client(headers={'user-agent': get_userAgent()}).get(search_url)
+        client = create_client(headers={'user-agent': get_userAgent()})
+        response = client.get(search_url)
+        client.close()
         response.raise_for_status()
     except Exception as e:
         console.print(f"[red]Site: {site_constants.SITE_NAME}, request search error: {e}")

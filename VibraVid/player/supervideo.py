@@ -34,7 +34,9 @@ class VideoSource:
             - str: The response content if successful, None otherwise.
         """
         try:
-            response = create_client(headers=self.headers).get(url)
+            client = create_client(headers=self.headers)
+            response = client.get(url)
+            client.close()
             if response.status_code >= 400:
                 logger.error(f"Request failed with status code: {response.status_code}, to url: {url}")
                 return None

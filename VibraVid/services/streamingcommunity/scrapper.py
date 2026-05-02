@@ -44,7 +44,9 @@ class GetSerieInfo:
             Exception: If there's an error fetching series information
         """
         try:
-            response = create_client(headers=self.headers).get(f"{self.url}/titles/{self.media_id}-{self.series_name}")
+            client = create_client(headers=self.headers)
+            response = client.get(f"{self.url}/titles/{self.media_id}-{self.series_name}")
+            client.close()
             response.raise_for_status()
 
             # Extract series info from JSON response
@@ -94,7 +96,9 @@ class GetSerieInfo:
                 'x-inertia': 'true',
                 'x-inertia-version': self.version,
             })
-            response = create_client(headers=custom_headers).get(f"{self.url}/titles/{self.media_id}-{self.series_name}/season-{number_season}")
+            client = create_client(headers=custom_headers)
+            response = client.get(f"{self.url}/titles/{self.media_id}-{self.series_name}/season-{number_season}")
+            client.close()
 
             # Extract episodes from JSON response
             json_response = response.json().get('props', {}).get('loadedSeason', {}).get('episodes', [])

@@ -157,7 +157,9 @@ def get_servers():
     if _servers_cache:
         return _servers_cache
     try:
-        r = create_client(headers={'user-agent': get_userAgent(), 'referer': 'https://www.cinezo.net/'}).get(API_SERVERS_URL)
+        client = create_client(headers={'user-agent': get_userAgent(), 'referer': 'https://www.cinezo.net/'})
+        r = client.get(API_SERVERS_URL)
+        client.close()
         r.raise_for_status()
         _servers_cache = r.json()
         return _servers_cache
@@ -181,7 +183,9 @@ def _try_server(server, tmdb_id, media_type, season, episode, api_headers, found
             console.print(f"[yellow][Cinezo] {name}: no URL template")
             return None
 
-        r = create_client(headers=api_headers).get(url, timeout=20)
+        client = create_client(headers=api_headers)
+        r = client.get(url, timeout=20)
+        client.close()
         if not r.ok or found_event.is_set():
             console.print(f"[yellow][Cinezo] {name}: HTTP {r.status_code}")
             return None

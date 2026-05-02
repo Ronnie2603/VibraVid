@@ -45,7 +45,9 @@ class GetSerieInfo:
         Retrieve general information about the TV series from Tubi TV.
         """
         try:
-            response = create_client(headers=self.headers).get(f'https://content-cdn.production-public.tubi.io/cms/series/{self.content_id}/episodes')
+            client = create_client(headers=self.headers)
+            response = client.get(f'https://content-cdn.production-public.tubi.io/cms/series/{self.content_id}/episodes')
+            client.close()
             response.raise_for_status()
 
             json_data = response.json()
@@ -91,10 +93,12 @@ class GetSerieInfo:
                 'pagination[season]': str(number_season),
             }
 
-            response = create_client(headers=self.headers).get(
+            client = create_client(headers=self.headers)
+            response = client.get(
                 'https://content-cdn.production-public.tubi.io/api/v2/content',
                 params=params
             )
+            client.close()
             response.raise_for_status()
             json_data = response.json()
             

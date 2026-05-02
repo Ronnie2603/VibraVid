@@ -38,3 +38,8 @@ class VideoSource:
         except Exception as e:
             logger.error(f"Error in new API system: {e}")
             return None
+
+    def close(self):
+        """Close the HTTP client session."""
+        if self.client:
+            self.client.close()

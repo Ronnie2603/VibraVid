@@ -33,7 +33,9 @@ class GetSerieInfo:
             int: Number of seasons of the TV series. Returns -1 if parsing fails.
         """
         try:
-            response = create_client(headers=self.headers).get(self.url)
+            client = create_client(headers=self.headers)
+            response = client.get(self.url)
+            client.close()
             response.raise_for_status()
 
             # Find the seasons container
@@ -71,7 +73,9 @@ class GetSerieInfo:
             List[Episode]: List of Episode objects containing episode information.
         """
         try:
-            response = create_client(headers=self.headers).get(self.url)
+            client = create_client(headers=self.headers)
+            response = client.get(self.url)
+            client.close()
             response.raise_for_status()
 
             # Parse HTML content of the page

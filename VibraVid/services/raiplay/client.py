@@ -20,7 +20,9 @@ def generate_license_url(mpd_id: str):
         'output': '62',
     }
     
-    response = create_client(headers=get_headers()).get('https://mediapolisvod.rai.it/relinker/relinkerServlet.htm', params=params)
+    client = create_client(headers=get_headers())
+    response = client.get('https://mediapolisvod.rai.it/relinker/relinkerServlet.htm', params=params)
+    client.close()
     response.raise_for_status()
 
     # Extract the license URL from the response in two lines

@@ -51,7 +51,9 @@ def title_search(query: str) -> int:
     }
 
     try:
-        response = create_client(headers=get_headers()).post(search_url, json=json_data)
+        client = create_client(headers=get_headers())
+        response = client.post(search_url, json=json_data)
+        client.close()
         response.raise_for_status()
 
     except Exception as e:
