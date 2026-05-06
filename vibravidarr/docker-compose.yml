@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  vibravidarr:
+    build: .
+    network_mode: "container:gluetun"
+    container_name: vibravidarr
+    restart: unless-stopped
+    volumes:
+      # Database locale del bridge
+      - ./database_locale:/database
+
+      - ./src:/app/src
+      - ./main.py:/app/main.py
+
+      # FONDAMENTALE: Usa la STESSA identica path dei torrent di Sonarr e Radarr
+      - /path/to/Anime:/app/Video/Anime
+      - /path/to/series/Serie:/app/Video/Serie
+      - /path/to/movies:/app/Video/Movie
+
+    environment:
+      # Modifica gli IP in base a come li raggiungi
+      - SONARR_URL=http://localhost:8989
+      - SONARR_API_KEY=chiave_api_sonarr
+      - RADARR_URL=http://localhost:7878
+      - RADARR_API_KEY=chiave_api_radarr

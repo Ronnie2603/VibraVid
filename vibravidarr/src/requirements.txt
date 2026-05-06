@@ -1,0 +1,5 @@
+fastapi==0.103.2
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+apiflask
+tenacity==9.0.0
