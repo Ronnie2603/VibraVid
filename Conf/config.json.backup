@@ -6,9 +6,7 @@
         "show_message": true,
         "fetch_domain_online": true,
         "auto_update_check": true,
-        "imp_service": [
-            "default"
-        ],
+        "imp_service": ["default"],
         "installation": "essential"
     },
     "OUTPUT": {
@@ -33,24 +31,9 @@
     },
     "PROCESS": {
         "use_gpu": false,
-        "param_video": [
-            "-c:v",
-            "libx265",
-            "-crf",
-            "28",
-            "-preset",
-            "medium"
-        ],
-        "param_audio": [
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "128k"
-        ],
-        "param_final": [
-            "-c",
-            "copy"
-        ],
+        "param_video": ["-c:v","libx265","-crf","28","-preset","medium"],
+        "param_audio": ["-c:a","libopus","-b:a","128k"],
+        "param_final": ["-c","copy"],
         "audio_order": [],
         "subtitle_order": [],
         "subtitle_disposition_language": "ita_forced",
@@ -86,10 +69,12 @@
     },
     "ARR": {
         "enabled": false,
-        "enable_polling": false,
+        "enable_polling": true,
         "enable_seerr_webhook": false,
         "polling_interval": 300,
         "full_resync_interval": 21600,
+        "tags_mode": "BLACKLIST",
+        "active_tag_ids": [],
         "sonarr": {
             "url": "",
             "api_key": ""

@@ -1,8 +1,0 @@
-{
-	"LogLevel": "DEBUG",
-	"MoveEp": true,
-	"RenameEp": true,
-	"AutoBind": false,
-	"ScanDelay": 2,
-	"TagsMode": "BLACKLIST"
-}

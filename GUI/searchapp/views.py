@@ -1,4 +1,4 @@
-﻿# 06.06.25
+# 06.06.25
 
 import os
 import time
@@ -1159,3 +1159,158 @@ def save_settings(request: HttpRequest) -> JsonResponse:
             "success": False,
             "error": f"Errore nel salvataggio: {str(e)}"
         }, status=500)
+
+
+# ─────────────────────────────────────────────────────
+# ARR Integration Views
+# ─────────────────────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def seerr_webhook(request: HttpRequest) -> JsonResponse:
+    """
+    Seerr/Overseerr webhook endpoint.
+    POST /api/arr/webhook/seerr/
+
+    Validates X-Webhook-Token, logs the event, and triggers immediate sync.
+    """
+    try:
+        from .arr.arr_service import _load_arr_config, trigger_webhook_sync
+        from .models import ArrWebhookEvent
+
+        cfg = _load_arr_config()
+
+        if not cfg.get("enabled"):
+            return JsonResponse({"status": "disabled", "message": "ARR services are disabled"}, status=200)
+
+        if not cfg.get("enable_seerr_webhook"):
+            return JsonResponse({"status": "disabled", "message": "Seerr webhook is disabled"}, status=200)
+
+        # Validate webhook token
+        expected_secret = cfg.get("seerr", {}).get("webhook_secret", "")
+        if expected_secret:
+            token = request.headers.get("X-Webhook-Token", "")
+            if token != expected_secret:
+                return JsonResponse({"status": "error", "message": "Invalid webhook token"}, status=403)
+
+        # Parse payload
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return JsonResponse({"status": "error", "message": "Invalid JSON"}, status=400)
+
+        # Detect event type
+        notification_type = payload.get("notification_type", "").upper()
+        if notification_type in ("MEDIA_APPROVED", "MEDIA_PENDING", "TEST_NOTIFICATION"):
+            event_type = notification_type
+        else:
+            event_type = "UNKNOWN"
+
+        # Log the event
+        webhook_event = ArrWebhookEvent.objects.create(
+            event_type=event_type,
+            raw_payload=payload,
+            processed=False,
+        )
+
+        # Handle test notification
+        if event_type == "TEST_NOTIFICATION":
+            webhook_event.processed = True
+            webhook_event.save(update_fields=["processed"])
+            return JsonResponse({"status": "ok", "message": "Test notification received"})
+
+        # Handle media events
+        if event_type in ("MEDIA_APPROVED", "MEDIA_PENDING"):
+            def _async_sync():
+                try:
+                    from django.db import close_old_connections
+                    close_old_connections()
+
+                    count = trigger_webhook_sync(payload)
+                    webhook_event.processed = True
+                    webhook_event.save(update_fields=["processed"])
+                    print(f"[ARR] Webhook sync complete: {count} items enqueued")
+                except Exception as exc:
+                    webhook_event.error = str(exc)
+                    webhook_event.save(update_fields=["error"])
+                    print(f"[ARR] Webhook sync error: {exc}")
+
+            threading.Thread(target=_async_sync, daemon=True).start()
+            return JsonResponse({"status": "ok", "message": f"Processing {event_type}"})
+
+        return JsonResponse({"status": "ok", "message": f"Event {event_type} acknowledged"})
+
+    except Exception as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def arr_status(request: HttpRequest) -> JsonResponse:
+    """
+    ARR status endpoint.
+    GET /api/arr/status/
+
+    Returns current ARR configuration state and recent activity.
+    """
+    try:
+        from .arr.arr_service import _load_arr_config
+        from .models import ArrMediaRequest, ArrWebhookEvent, ArrProcessingQueue
+
+        cfg = _load_arr_config()
+
+        # Recent counts
+        pending_count = ArrMediaRequest.objects.filter(status="pending").count()
+        downloading_count = ArrMediaRequest.objects.filter(status="downloading").count()
+        completed_count = ArrMediaRequest.objects.filter(status="completed").count()
+        failed_count = ArrMediaRequest.objects.filter(status="failed").count()
+        webhook_count = ArrWebhookEvent.objects.count()
+
+        return JsonResponse({
+            "enabled": cfg.get("enabled", False),
+            "polling_enabled": cfg.get("enable_polling", False),
+            "webhook_enabled": cfg.get("enable_seerr_webhook", False),
+            "polling_interval": cfg.get("polling_interval", 300),
+            "full_resync_interval": cfg.get("full_resync_interval", 21600),
+            "sonarr_configured": bool(cfg.get("sonarr", {}).get("url")),
+            "radarr_configured": bool(cfg.get("radarr", {}).get("url")),
+            "stats": {
+                "pending": pending_count,
+                "downloading": downloading_count,
+                "completed": completed_count,
+                "failed": failed_count,
+                "total_webhooks": webhook_count,
+            },
+        })
+    except Exception as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def arr_trigger_sync(request: HttpRequest) -> JsonResponse:
+    """
+    Manually trigger ARR sync.
+    POST /api/arr/trigger-sync/
+    """
+    try:
+        from .arr.arr_service import _load_arr_config, trigger_polling_sync
+
+        cfg = _load_arr_config()
+        if not cfg.get("enabled"):
+            return JsonResponse({"status": "disabled", "message": "ARR services are disabled"})
+
+        def _async_sync():
+            try:
+                from django.db import close_old_connections
+                close_old_connections()
+                count = trigger_polling_sync(full_resync=True)
+                print(f"[ARR] Manual sync complete: {count} items enqueued")
+            except Exception as exc:
+                print(f"[ARR] Manual sync error: {exc}")
+
+        threading.Thread(target=_async_sync, daemon=True).start()
+        return JsonResponse({"status": "ok", "message": "Sync triggered in background"})
+
+    except Exception as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=500)
