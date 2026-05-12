@@ -459,9 +459,24 @@ RADARR_WEBHOOK_SECRET=your-radarr-secret
 
 Environment variables are especially useful when the same container image is deployed across multiple environments.
 
-#### Tag-based filtering
+#### Tag-based filtering and provider selection
 
-ARR processing can be controlled through Sonarr/Radarr tags.
+ARR processing can be controlled through tags configured in **Sonarr**, **Radarr**, and, when available in the webhook/request metadata, **Seerr/Jellyseerr**.
+
+Besides skip/hold tags, VibraVid can read a provider-selection tag using this format:
+
+```text
+provider-<vibravid-site-or-service>
+```
+
+The value after `provider-` must match the VibraVid site/service identifier that should be used for the download.
+
+Examples:
+
+```text
+provider-streamingcommunity
+provider-mycustomsite
+```
 
 | Tag | Behaviour |
 |-----|-----------|
@@ -469,9 +484,10 @@ ARR processing can be controlled through Sonarr/Radarr tags.
 | `pausa` | Skips the item temporarily |
 | `skip-s1` | Skips season 1 of a series |
 | `skip-s2` | Skips season 2 of a series, and so on |
-| `provider-streamingcommunity` | Forces the `streamingcommunity` provider for that item |
+| `provider-streamingcommunity` | Forces VibraVid to use the `streamingcommunity` provider for that item |
+| `provider-<site>` | Forces VibraVid to use the matching site/service provider for that item |
 
-If no provider tag is found, VibraVid falls back to the default configured provider.
+Provider tags can be assigned directly to the movie in Radarr, to the series in Sonarr, or propagated from Seerr/Jellyseerr request metadata when that metadata is available to the webhook flow. If no provider tag is found, VibraVid falls back to the default configured provider.
 
 ---
 
@@ -784,7 +800,7 @@ Sonarr / Radarr
 VibraVid ARR
     ↓ detects missing media through polling or webhooks
 VibraVid downloader
-    ↓ searches and downloads through the configured provider
+    ↓ searches and downloads through the configured provider or through the provider selected by tag
 Sonarr / Radarr
     ↓ rescans/imports the downloaded file
 Media library
@@ -820,6 +836,18 @@ ARR can process media in two ways:
 2. **Webhooks** — VibraVid reacts immediately when Seerr, Sonarr or Radarr sends an event.
 
 Both modes can be enabled together. Native Sonarr/Radarr webhooks can be prioritized over Seerr events to reduce duplicate processing.
+
+### Provider selection with tags
+
+To force VibraVid to use a specific site/service for a movie, series or request, add a tag with the following format in Sonarr, Radarr or Seerr/Jellyseerr:
+
+```text
+provider-<vibravid-site-or-service>
+```
+
+For example, `provider-streamingcommunity` tells VibraVid ARR to use the `streamingcommunity` provider for that item. This is useful when different media should be downloaded from different VibraVid providers without changing the global configuration.
+
+If multiple provider tags are present, the ARR processor uses the first valid provider tag it resolves from the item metadata. If no provider tag is found, the default provider is used.
 
 ### Sonarr workflow
 
