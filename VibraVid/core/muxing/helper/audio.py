@@ -362,7 +362,6 @@ def process_song(file_path: str, title: str, artist: str, album: str = "", year:
     path = file_path
 
     # Step 1 — tag the downloaded file
-    console.print(f"[cyan]Tagging: [white]{artist or 'Unknown'} - {title}")
     tag_track(
         file_path=path,
         title=title,

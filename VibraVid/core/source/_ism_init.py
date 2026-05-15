@@ -4,6 +4,8 @@ import logging
 import struct
 from typing import Dict, List, Optional, Tuple
 
+from VibraVid.core.drm.system import _DRMSystems
+
 
 logger = logging.getLogger(__name__)
 ISM_TIMESCALE = 10_000_000  # PIFF / Smooth Streaming default (100-ns ticks)
@@ -59,9 +61,7 @@ def make_mvhd(duration: int, timescale: int = ISM_TIMESCALE) -> bytes:
     return make_full_box(b"mvhd", 1, 0, payload)
 
 
-def make_tkhd_video(
-    duration: int, width: int, height: int, track_id: int = TRACK_ID
-) -> bytes:
+def make_tkhd_video(duration: int, width: int, height: int, track_id: int = TRACK_ID) -> bytes:
     payload = struct.pack(">Q", 0)  # creation_time
     payload += struct.pack(">Q", 0)  # modification_time
     payload += struct.pack(">I", track_id)
@@ -143,8 +143,6 @@ def _pack_iso639_2(lang: str) -> bytes:
 # ---------------------------------------------------------------------------
 # hdlr / minf children
 # ---------------------------------------------------------------------------
-
-
 def make_hdlr(handler_type: bytes, name: str) -> bytes:
     payload = b"\x00" * 4
     payload += handler_type  # 'vide' / 'soun'
@@ -178,8 +176,6 @@ def make_dinf() -> bytes:
 # ---------------------------------------------------------------------------
 # Encryption metadata: tenc + sinf wrapper
 # ---------------------------------------------------------------------------
-
-
 def make_tenc(kid_bytes: bytes) -> bytes:
     payload = struct.pack(">B", 0)  # reserved
     payload += struct.pack(">B", 0)  # reserved
@@ -199,8 +195,6 @@ def make_sinf(original_format: bytes, kid_bytes: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # HEVC: parse Annex-B start-code NAL units and build a real hvcC box
 # ---------------------------------------------------------------------------
-
-
 def _split_annexb_nalus(data: bytes) -> List[bytes]:
     nalus: List[bytes] = []
     i = 0
@@ -297,8 +291,6 @@ def build_hvcc(codec_private: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # AVC (H.264): pass through Bento4-style avcC bytes when present
 # ---------------------------------------------------------------------------
-
-
 def build_avcc(codec_private: bytes) -> bytes:
     """
     Smooth Streaming H.264 CodecPrivateData is the SPS+PPS as Annex-B
@@ -323,16 +315,13 @@ def build_avcc(codec_private: bytes) -> bytes:
     for sps in sps_list:
         payload += struct.pack(">H", len(sps))
         payload += sps
+
     payload.append(len(pps_list) & 0xFF)
     for pps in pps_list:
         payload += struct.pack(">H", len(pps))
         payload += pps
+    
     return bytes(payload)
-
-
-# ---------------------------------------------------------------------------
-# E-AC-3 / AC-3: build dec3 / dac3 SpecificBox payloads
-# ---------------------------------------------------------------------------
 
 
 def _build_dec3_default(sample_rate: int, channels: int) -> bytes:
@@ -394,8 +383,6 @@ def _build_dac3_default(sample_rate: int, channels: int) -> bytes:
 # ---------------------------------------------------------------------------
 # AAC (audio): build esds from AudioSpecificConfig
 # ---------------------------------------------------------------------------
-
-
 def build_esds(audio_specific_config: bytes) -> bytes:
     """Build an esds box (ISO/IEC 14496-1) wrapping an AAC AudioSpecificConfig."""
     asc = audio_specific_config or b""
@@ -429,8 +416,6 @@ def build_esds(audio_specific_config: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # Sample entries
 # ---------------------------------------------------------------------------
-
-
 def _visual_sample_entry_header(width: int, height: int) -> bytes:
     entry = b"\x00" * 6  # reserved
     entry += struct.pack(">H", 1)  # data_reference_index
@@ -458,9 +443,7 @@ def _audio_sample_entry_header(sample_rate: int, channels: int) -> bytes:
     return entry
 
 
-def build_video_stsd(
-    codec: str, codec_private: bytes, width: int, height: int, kid_bytes: bytes
-) -> bytes:
+def build_video_stsd(codec: str, codec_private: bytes, width: int, height: int, kid_bytes: bytes) -> bytes:
     if codec in ("hvc1", "hev1"):
         config_box = make_box(b"hvcC", build_hvcc(codec_private))
         original_format = b"hvc1"
@@ -476,9 +459,7 @@ def build_video_stsd(
     return make_full_box(b"stsd", 0, 0, struct.pack(">I", 1) + encv)
 
 
-def build_audio_stsd(
-    codec: str, codec_private: bytes, sample_rate: int, channels: int, kid_bytes: bytes
-) -> bytes:
+def build_audio_stsd(codec: str, codec_private: bytes, sample_rate: int, channels: int, kid_bytes: bytes) -> bytes:
     if codec.startswith("mp4a") or codec in ("aac", "aacl", "aach", "aacp"):
         config_box = build_esds(codec_private)
         original_format = b"mp4a"
@@ -510,8 +491,6 @@ def build_audio_stsd(
 # ---------------------------------------------------------------------------
 # Empty stbl tables (fragments carry the real timing in moof/traf/trun)
 # ---------------------------------------------------------------------------
-
-
 def make_empty_stts() -> bytes:
     return make_full_box(b"stts", 0, 0, struct.pack(">I", 0))
 
@@ -542,8 +521,6 @@ def build_stbl(stsd_box: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # minf / mdia / trak / mvex
 # ---------------------------------------------------------------------------
-
-
 def build_video_minf(stsd_box: bytes) -> bytes:
     return make_box(b"minf", make_vmhd() + make_dinf() + build_stbl(stsd_box))
 
@@ -609,9 +586,8 @@ def build_mvex(duration: int, track_id: int = TRACK_ID) -> bytes:
 # ---------------------------------------------------------------------------
 # Optional pssh boxes (PlayReady / Widevine)
 # ---------------------------------------------------------------------------
-
-_PLAYREADY_SYSTEM_ID = bytes.fromhex("9a04f07998404286ab92e65be0885f95")
-_WIDEVINE_SYSTEM_ID = bytes.fromhex("edef8ba979d64acea3c827dcd51d21ed")
+_PLAYREADY_SYSTEM_ID = bytes.fromhex(_DRMSystems.PLAYREADY)
+_WIDEVINE_SYSTEM_ID = bytes.fromhex(_DRMSystems.WIDEVINE)
 
 
 def make_pssh_playready(pro_bytes: bytes) -> bytes:
@@ -636,9 +612,7 @@ def kid_hex_to_bytes(kid: str) -> bytes:
     """Accept the canonical CENC big-endian hex string used by ``DRMInfo.kid``."""
     cleaned = (kid or "").replace("-", "").replace("{", "").replace("}", "").lower()
     if len(cleaned) != 32:
-        raise ValueError(
-            f"KID must be 16 bytes (32 hex chars), got {len(cleaned)}: {kid!r}"
-        )
+        raise ValueError(f"KID must be 16 bytes (32 hex chars), got {len(cleaned)}: {kid!r}")
     return bytes.fromhex(cleaned)
 
 

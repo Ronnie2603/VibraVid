@@ -7,6 +7,7 @@ from typing import Optional
 from rich.console import Console
 
 from VibraVid.utils import config_manager
+from VibraVid.core.drm.system import DRMType
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -96,6 +97,13 @@ def handle_direct_download(args) -> bool:
     lic_hdr   = _parse_headers(getattr(args, 'license_headers', None))
     drm_pref  = (getattr(args, 'drm', None) or 'auto').strip().lower()
 
+    # Map DRM string to DRMType constant (or None if not recognized)
+    drm_choice = None
+    if drm_pref in ('widevine', 'wv', DRMType.WIDEVINE):
+        drm_choice = DRMType.WIDEVINE
+    elif drm_pref in ('playready', 'pr', DRMType.PLAYREADY):
+        drm_choice = DRMType.PLAYREADY
+
     # Build output path
     EXTENSION_OUTPUT = config_manager.config.get("PROCESS", "extension")
     if not output:
@@ -137,13 +145,13 @@ def handle_direct_download(args) -> bool:
                 license_url=lic_url,
                 license_headers=lic_hdr or None,
                 output_path=output,
-                drm_preference=drm_pref if drm_pref != 'auto' else 'widevine',
+                drm_preference=drm_choice or DRMType.WIDEVINE,
                 key=key_arg,
             )
-            path, cancelled = dl.start()
+            path, cancelled, error = dl.start()
 
         elif url_type == 'dash':
-            effective_drm = drm_pref if drm_pref in ('widevine', 'playready') else 'widevine'
+            effective_drm = drm_choice or DRMType.WIDEVINE
             dl = DASH_Downloader(
                 mpd_url=url,
                 mpd_headers=headers or None,
@@ -153,10 +161,10 @@ def handle_direct_download(args) -> bool:
                 drm_preference=effective_drm,
                 key=key_arg,
             )
-            path, cancelled = dl.start()
+            path, cancelled, error = dl.start()
 
         elif url_type == 'ism':
-            effective_drm = drm_pref if drm_pref in ('widevine', 'playready') else 'playready'
+            effective_drm = drm_choice or DRMType.PLAYREADY
             dl = ISM_Downloader(
                 ism_url=url,
                 headers=headers or None,
@@ -166,7 +174,7 @@ def handle_direct_download(args) -> bool:
                 drm_preference=effective_drm,
                 key=key_arg,
             )
-            path, cancelled = dl.start()
+            path, cancelled, error = dl.start()
 
         else:
             console.print(f"[red]Unknown stream type: {url_type}")

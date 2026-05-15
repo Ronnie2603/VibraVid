@@ -54,3 +54,4 @@ GUI/db.sqlite3
 Conf/domains.json
 Conf/login.json
 /.cache
+.claude

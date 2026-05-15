@@ -139,7 +139,7 @@ class TVShowManager:
             self.console.print(page_info, justify="center")
 
             # Pagination prompt
-            self.console.print("\n[green]Press [red]Enter [green]for next page, [red]'q' [green]to quit.")
+            self.console.print("[green]Press [red]Enter [green]for next page, [red]'q' [green]to quit.")
 
             if not force_int_input:
                 prompt_msg = ("\n[cyan]Insert media index [yellow](e.g., 1), [red]* [cyan]to download all media, [yellow](e.g., 1-2) [cyan]for a range of media, or [yellow](e.g., 3-*) [cyan]to download from a specific index to the end")

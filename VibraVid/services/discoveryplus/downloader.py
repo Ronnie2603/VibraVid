@@ -11,6 +11,7 @@ from VibraVid.services._base.tv_display_manager import map_episode_path, map_mov
 from VibraVid.services._base.tv_download_manager import process_season_selection, process_episode_download
 
 from VibraVid.core.downloader import DASH_Downloader
+from VibraVid.core.drm.system import DRMType
 
 from .client import get_client
 from .scrapper import GetSerieInfo, GetStandaloneInfo
@@ -26,7 +27,7 @@ def download_film(select_title: Entries):
     Downloads a film using the provided Entries information.
     """
     start_message()
-    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} [cyan]{select_title.name} \n")
+    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} → [cyan]{select_title.name} \n")
     
     # Get standalone content info
     scrape_content = GetStandaloneInfo(select_title.id)
@@ -52,7 +53,7 @@ def download_film(select_title: Entries):
         license_url=playback_info['license'],
         license_headers=playback_info.get('license_headers', {}),
         output_path=os.path.join(movie_path, movie_name),
-        drm_preference="playready"
+        drm_preference=DRMType.PLAYREADY
     ).start()
 
 
@@ -62,7 +63,7 @@ def download_episode(obj_episode, index_season_selected, index_episode_selected,
     """
     start_message()
     client = get_client()
-    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} [cyan]{scrape_serie.series_name} [white]\\ [magenta]{obj_episode.name} ([cyan]S{index_season_selected}E{index_episode_selected}) \n")
+    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} → [cyan]{scrape_serie.series_name} [white]\\ [magenta]{obj_episode.name} ([cyan]S{index_season_selected}E{index_episode_selected}) \n")
 
     # Define output path
     path_components, filename = map_episode_path(scrape_serie.series_name,getattr(scrape_serie, 'year', None), index_season_selected, index_episode_selected, obj_episode.name)
@@ -77,7 +78,7 @@ def download_episode(obj_episode, index_season_selected, index_episode_selected,
         license_url=playback_info['license'],
         license_headers=playback_info.get('license_headers', {}),
         output_path=os.path.join(episode_path, episode_name),
-        drm_preference="playready"
+        drm_preference=DRMType.PLAYREADY
     ).start()
 
 

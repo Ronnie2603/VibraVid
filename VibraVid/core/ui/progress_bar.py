@@ -12,7 +12,7 @@ SHOW_DURATION = False
 
 
 class CustomBarColumn(ProgressColumn):
-    def __init__(self, bar_width=40, complete_char="-", incomplete_char="-", complete_style="bright_magenta", incomplete_style="dim white"):
+    def __init__(self, bar_width=30, complete_char="-", incomplete_char="-", complete_style="bright_magenta", incomplete_style="dim white"):
         super().__init__()
         self.bar_width = bar_width
         self.complete_char = complete_char

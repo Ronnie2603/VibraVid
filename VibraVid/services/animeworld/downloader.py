@@ -30,7 +30,7 @@ def download_film(select_title: Entries):
 
     # Get episode information
     episode_data = episodes[0]
-    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} ([cyan]{scrape_serie.get_name()}) \n")
+    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} → ([cyan]{scrape_serie.get_name()}) \n")
 
     # Define filename and path for the downloaded video
     serie_name_with_year = os_manager.get_sanitize_file(scrape_serie.get_name(), select_title.year)

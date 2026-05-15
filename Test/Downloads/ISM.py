@@ -9,15 +9,21 @@ sys.path.append(src_path)
 
 
 from VibraVid.utils import config_manager
+from VibraVid.utils import setup_logger
 from VibraVid.core.downloader.ism import ISM_Downloader
+from VibraVid.core.drm.system import DRMType
 
 
+setup_logger()
 conf_extension = config_manager.config.get("PROCESS", "extension")
+
+
 ism_url = ''
 ism_headers = {}
 license_url = ''
 license_headers = {}
 license_key = None
+
 
 dash_process = ISM_Downloader(
     ism_url=ism_url,
@@ -26,8 +32,9 @@ dash_process = ISM_Downloader(
     license_headers=license_headers,
     output_path=fr".\Video\1.{conf_extension}",
     key=license_key,
-    drm_preference="widevine"
+    drm_preference=DRMType.WIDEVINE
 )
 
-out_path, need_stop = dash_process.start()
-print(f"Output path: {out_path}, Need stop: {need_stop}")
+
+out_path, need_stop, error = dash_process.start()
+print(f"Output path: {out_path}, Need stop: {need_stop}, error: {error}")

@@ -26,8 +26,8 @@ from VibraVid.cli.command.download import handle_direct_download
 console = Console()
 msg = Prompt()
 logger = logging.getLogger(__name__)
-COLOR_MAP = {"anime": "#E63946", "film_serie": "#FFD60A", "serie": "#3891C9", "film": "#06A77D"}
-CATEGORY_MAP = {1: "anime", 2: "Film_serie", 3: "serie", 4: "film"}
+COLOR_MAP = {"anime": "red", "film_serie": "yellow", "serie": "cyan", "film": "green", "song": "grey35"}
+CATEGORY_MAP = {1: "anime", 2: "Film_serie", 3: "serie", 4: "film", 5: "song"}
 CLOSE_CONSOLE = config_manager.config.get_bool('DEFAULT', 'close_console')
 PERSISTENT_ARGS = {'use_proxy', 'extension', 'close_console'}
 
