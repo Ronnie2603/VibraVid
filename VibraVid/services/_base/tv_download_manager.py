@@ -58,7 +58,8 @@ def process_season_selection(scrape_serie: Any, seasons_count: int, season_selec
     else:
         index_season_selected = season_selection
         is_manual_input = False
-        console.print(f"\n[cyan]Using provided season selection: [yellow]{season_selection}")
+        #console.print(f"\n[cyan]Using provided season selection: [yellow]{season_selection}")
+        logger.info(f"Using provided season selection: {season_selection}")
     
     # Get available season numbers
     seasons_list = scrape_serie.seasons_manager.seasons
@@ -157,11 +158,34 @@ def process_episode_download(index_season_selected: int, scrape_serie: Any, down
             context_tracker.episode_name = ep_obj.get('name') if isinstance(ep_obj, dict) else getattr(ep_obj, 'name', None)
 
             # Trigger the download callback for the current episode
-            path, stopped = download_video_callback(episodes[i_episode-1], index_season_selected, i_episode)
-            
+            try:
+                result = download_video_callback(episodes[i_episode-1], index_season_selected, i_episode)
+            except Exception as e:
+                logger.exception("Error downloading episode %s of season %s", i_episode, index_season_selected)
+                console.print(f"[red]Error downloading episode {i_episode} of season {index_season_selected}: {e}")
+                stopped = True
+                result = (None, True)
+
+            # Support callbacks returning either (path, stopped) or (path, stopped, error)
+            stopped = True
+            error_msg = None
+            if isinstance(result, tuple):
+                if len(result) == 2:
+                    _, stopped = result
+                elif len(result) >= 3:
+                    _, stopped, error_msg = result[0], result[1], result[2]
+                else:
+                    _ = result[0] if result else None
+                    stopped = True
+            else:
+                stopped = True
+
+            # If callback signalled stop/failure, surface returned error (if any)
             if _is_user_stop_requested() or stopped:
                 if _is_user_stop_requested():
                     break
+                if error_msg:
+                    console.print(f"[red]Error: {error_msg}")
                 console.print(f"[yellow]Warning: episode {i_episode} failed for season {index_season_selected}.")
     
     else:
@@ -170,7 +194,8 @@ def process_episode_download(index_season_selected: int, scrape_serie: Any, down
             last_command = display_episodes_list(episodes)
         else:
             last_command = episode_selection
-            console.print(f"\n[cyan]Using provided episode selection: [yellow]{episode_selection}")
+            #console.print(f"\n[cyan]Using provided episode selection: [yellow]{episode_selection}")
+            logger.info(f"Using provided episode selection: {episode_selection}")
         
         # Get available episode numbers
         available_episode_numbers = [
@@ -231,9 +256,31 @@ def process_episode_download(index_season_selected: int, scrape_serie: Any, down
             context_tracker.episode_name = ep_obj.get('name') if isinstance(ep_obj, dict) else getattr(ep_obj, 'name', None)
 
             # Trigger the download callback for the current episode
-            path, stopped = download_video_callback(episodes[i_episode-1], index_season_selected, i_episode)
-            
+            try:
+                result = download_video_callback(episodes[i_episode-1], index_season_selected, i_episode)
+            except Exception as e:
+                logger.exception("Error downloading episode %s of season %s", i_episode, index_season_selected)
+                console.print(f"[red]Error downloading episode {i_episode} of season {index_season_selected}: {e}")
+                stopped = True
+                result = (None, True)
+
+            # Support callbacks returning either (path, stopped) or (path, stopped, error)
+            stopped = True
+            error_msg = None
+            if isinstance(result, tuple):
+                if len(result) == 2:
+                    _, stopped = result
+                elif len(result) >= 3:
+                    _, stopped, error_msg = result[0], result[1], result[2]
+                else:
+                    stopped = True
+            else:
+                stopped = True
+
+            # If callback signalled stop/failure, surface returned error (if any)
             if stopped or _is_user_stop_requested():
                 if _is_user_stop_requested():
                     break
+                if error_msg:
+                    console.print(f"[red]Error: {error_msg}")
                 console.print(f"[yellow]Warning: episode {i_episode} failed for season {index_season_selected}.")

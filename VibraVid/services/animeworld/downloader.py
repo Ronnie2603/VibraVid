@@ -30,7 +30,7 @@ def download_film(select_title: Entries):
 
     # Get episode information
     episode_data = episodes[0]
-    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} ([cyan]{scrape_serie.get_name()}) \n")
+    console.print(f"\n[yellow]Download: [red]{site_constants.SITE_NAME} → ([cyan]{scrape_serie.get_name()}) \n")
 
     # Define filename and path for the downloaded video
     serie_name_with_year = os_manager.get_sanitize_file(scrape_serie.get_name(), select_title.year)
@@ -45,12 +45,10 @@ def download_film(select_title: Entries):
     mp4_link = video_source.get_playlist()
 
     # Start downloading
-    path, kill_handler = MP4_Downloader(
+    return MP4_Downloader(
         url=str(mp4_link).strip(),
         path=os.path.join(mp4_path, mp4_name)
     )
-
-    return path, kill_handler
 
 
 def download_episode(episode_data, index_select, scrape_serie):
@@ -77,12 +75,10 @@ def download_episode(episode_data, index_select, scrape_serie):
     mp4_link = video_source.get_playlist()
 
     # Start downloading
-    path, kill_handler = MP4_Downloader(
+    return MP4_Downloader(
         url=str(mp4_link).strip(),
         path=os.path.join(episode_path, episode_filename)
     )
-
-    return path, kill_handler
 
 def download_series(select_title: Entries, season_selection: str = None, episode_selection: str = None, scrape_serie = None):
     """
@@ -115,13 +111,17 @@ def download_series(select_title: Entries, season_selection: str = None, episode
     # Download selected episodes
     if len(list_episode_select) == 1 and last_command != "*":
         obj_episode = episodes[list_episode_select[0]-1]
-        path, _ = download_episode(obj_episode, list_episode_select[0]-1, scrape_serie)
-        return path
+        return download_episode(obj_episode, list_episode_select[0]-1, scrape_serie)
 
     # Download all other episodes selected
     else:
         for i_episode in list_episode_select:
             obj_episode = episodes[i_episode-1]
-            path, kill_handler = download_episode(obj_episode, i_episode-1, scrape_serie)
+            path, kill_handler, msg_error = download_episode(obj_episode, i_episode-1, scrape_serie)
+
+            if msg_error:
+                console.print(f"[red]{msg_error}")
+                kill_handler = True
+            
             if kill_handler:
                 break

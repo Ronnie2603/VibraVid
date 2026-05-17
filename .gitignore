@@ -57,4 +57,4 @@ Conf/config.json.backup
 /.cache
 !/.cache/arr
 !/.cache/arr/.gitkeep
-/.claude
+.claude

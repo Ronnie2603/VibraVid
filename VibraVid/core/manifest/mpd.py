@@ -13,7 +13,7 @@ from rich.console import Console
 
 from VibraVid.utils import config_manager
 from VibraVid.utils.http_client import create_client, get_headers
-from VibraVid.core.manifest.stream import DRMInfo, Segment, Stream
+from VibraVid.core.manifest.stream import DRMInfo, Segment, Stream, DRMType
 from VibraVid.core.utils.language import resolve_locale
 from VibraVid.core.utils.codec import DV_CODEC_PREFIXES, detect_stream_type, get_codec_extension, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS
 from VibraVid.core.manifest._utils import calc_base_url, save_raw_manifest
@@ -26,9 +26,9 @@ _NS = {
     "cenc": "urn:mpeg:cenc:2013",
 }
 _SCHEME_DRM_MAP = {
-    DRMInfo.WIDEVINE_SYSTEM_ID: "WV", "edef8ba9": "WV", "widevine": "WV",
-    DRMInfo.PLAYREADY_SYSTEM_ID: "PR", "9a04f079": "PR", "playready": "PR", "com.microsoft": "PR",
-    DRMInfo.FAIRPLAY_SYSTEM_ID:  "FP", "94ce86fb": "FP", "fairplay": "FP", "com.apple": "FP",
+    DRMInfo.WIDEVINE_SYSTEM_ID: DRMType.WIDEVINE, "edef8ba9": DRMType.WIDEVINE, "widevine": DRMType.WIDEVINE,
+    DRMInfo.PLAYREADY_SYSTEM_ID: DRMType.PLAYREADY, "9a04f079": DRMType.PLAYREADY, "playready": DRMType.PLAYREADY, "com.microsoft": DRMType.PLAYREADY,
+    DRMInfo.FAIRPLAY_SYSTEM_ID:  DRMType.FAIRPLAY, "94ce86fb": DRMType.FAIRPLAY, "fairplay": DRMType.FAIRPLAY, "com.apple": DRMType.FAIRPLAY,
 }
 _TC_MAP = {
     "1": "SDR", "6": "SDR", "7": "SDR", "13": "SDR", "14": "SDR", "15": "SDR",
@@ -517,6 +517,7 @@ class DashParser:
         role_values = {el.get("value", "").lower() for el in adapt.findall(".//mpd:Role", _NS)}
         if "forced-subtitle" in role_values or "forced_subtitle" in role_values:
             s.forced = True
+        
         if "caption" in role_values or "captions" in role_values:
             s.is_cc = True
  
@@ -536,18 +537,23 @@ class DashParser:
                 value = (prop.get("value") or "").strip()
                 if "dolbyvision" in scheme or "dolby" in scheme:
                     return "DV"
+                
                 val_up = value.upper()
                 if val_up in ("HDR10", "HLG", "PQ", "HDR", "DV"):
                     return val_up
+                
                 if "transfercharacteristics" in scheme:
                     tc_value = value
+
                 if "colourprimaries" in scheme or "colorprimaries" in scheme:
                     cp_value = value
+            
         if tc_value and tc_value in _TC_MAP:
             vr = _TC_MAP[tc_value]
             return vr if vr != "SDR" else ""
         if cp_value in _CP_HDR_HINT:
             return "HDR10"
+        
         return ""
 
     
@@ -589,8 +595,8 @@ class DashParser:
             _MSPR_NS = "urn:microsoft:playready"
             pro_el = cp.find(f"{{{_MSPR_NS}}}pro")
             if pro_el is not None and pro_el.text and pro_el.text.strip():
-                if not info.get_pssh_for("PR"):
-                    info.set_pssh(pro_el.text.strip(), drm_type_hint="PR")
+                if not info.get_pssh_for(DRMType.PLAYREADY):
+                    info.set_pssh(pro_el.text.strip(), drm_type_hint=DRMType.PLAYREADY)
                     logger.info("DashParser: PlayReady PSSH extracted from <pro> element")
             
             # Extract KID from multiple possible attribute names
@@ -639,6 +645,7 @@ class DashParser:
             resolved = urljoin(parent_base, base_el.text.strip())
             if resolved.endswith("/") or not _is_file_url(resolved):
                 return resolved if resolved.endswith("/") else resolved + "/"
+            
             return resolved
         return parent_base
 
@@ -657,16 +664,20 @@ class DashParser:
 
             if token == "RepresentationID":
                 value = rep_id
+
             elif token == "Bandwidth":
                 value = str(int(bandwidth or 0))
+
             elif token == "Number":
                 if number is None:
                     return match.group(0)
                 value = str(int(number))
+
             elif token == "Time":
                 if time_value is None:
                     return match.group(0)
                 value = str(int(time_value))
+                
             else:
                 return match.group(0)
 
@@ -681,6 +692,7 @@ class DashParser:
         if "/ad/" in base_url.lower():
             logger.info(f"DashParser: segment skipped (ad path) | url={base_url}")
             return
+        
         init_tpl = tmpl.get("initialization", "")
         media_tpl = tmpl.get("media", "")
         start_num = int(tmpl.get("startNumber", 1))
@@ -706,10 +718,13 @@ class DashParser:
             current_time = start_time
             for s_el in timeline.findall("mpd:S", _NS):
                 t = s_el.get("t")
+
                 if t is not None:
                     current_time = int(t)
+                
                 d = int(s_el.get("d", 0))
                 r = int(s_el.get("r", 0))
+
                 for _ in range(r + 1):
                     seg_url = self._expand_segment_template_tokens(
                         media_tpl,
@@ -718,11 +733,13 @@ class DashParser:
                         number=seg_num,
                         time_value=current_time,
                     )
+
                     stream.add_segment(Segment(
                         self._inherit_query(urljoin(base_url, seg_url), self._mpd_query), seg_num, "media"
                     ))
                     current_time += d
                     seg_num += 1
+            
         elif "$Number" in media_tpl:
             seg_duration = int(tmpl.get("duration", 0))
             if seg_duration <= 0:

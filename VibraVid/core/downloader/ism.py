@@ -15,6 +15,7 @@ from VibraVid.core.utils.media_players import MediaPlayers
 
 from VibraVid.core.source.downloader import MediaDownloader
 from VibraVid.core.drm.manager import DRMManager
+from VibraVid.core.drm.system import DRMType
 from VibraVid.core.manifest.ism import ISMParser
 from VibraVid.core.muxing.helper.video_hybrid import split_other_tracks
 
@@ -27,28 +28,47 @@ logger = logging.getLogger(__name__)
 EXTENSION_OUTPUT = config_manager.config.get("PROCESS", "extension")
 SKIP_DOWNLOAD = config_manager.config.get_bool("DOWNLOAD", "skip_download")
 DELAY_SS = config_manager.config.get_int("DOWNLOAD", "delay_after_download")
-_WV = "widevine"
-_PR = "playready"
 
 
 class ISM_Downloader(BaseDownloader):
     def __init__(self, ism_url: str,
         headers: Optional[Dict[str, str]] = None, license_url: Optional[str] = None, license_headers: Optional[Dict[str, str]] = None, license_certificate: Optional[str] = None,
-        output_path: Optional[str] = None, drm_preference: str = "playready", key: Optional[str] = None, cookies: Optional[Dict[str, str]] = None,
+        output_path: Optional[str] = None, drm_preference = DRMType.PLAYREADY, key: Optional[str] = None, cookies: Optional[Dict[str, str]] = None,
         max_segments: Optional[int] = None,
         other_tracks: Optional[list] = None,
     ):
+        """
+        Parameters:
+            - ism_url: URL to the ISM manifest (ending with .ism or .ism/manifest).
+            - headers: HTTP headers for fetching the ISM manifest.
+            - license_url: URL of the license server for DRM key acquisition.
+            - license_headers: HTTP headers for license requests (defaults to *headers*).
+            - license_certificate: Widevine certificate (base64) for license challenge.
+            - output_path: Output file path. Default: "download.{EXTENSION_OUTPUT}".
+            - key: Manual decryption key (hex format) if known.
+            - cookies: HTTP cookies for authenticated requests.
+            - max_segments: Maximum number of segments to download (for testing). Default: None (
+        """
         self.ism_url = self._resolve_url(str(ism_url).strip())
         self.headers = headers or get_headers()
         self.license_url = str(license_url).strip() if license_url else None
         self.license_headers = license_headers or self.headers
         self.license_certificate = license_certificate
-        self.drm_preference = drm_preference.lower()
+        self.drm_preference = drm_preference
+
         self.key = key
         self.cookies = cookies or {}
         self.max_segments = max_segments
         self.other_tracks = other_tracks or []
         logger.info(f"Initialized ISM_Downloader with URL: {self.ism_url}, License URL: {self.license_url}, DRM Pref: {self.drm_preference}, Max Segments: {self.max_segments}")
+
+        self.drm_manager = DRMManager(
+            get_wvd_path(),
+            get_prd_path(),
+            config_manager.config.get_dict("DRM", "widevine", default={}),
+            config_manager.config.get_dict("DRM", "playready", default={}),
+            config_manager.config.get_bool("DRM", "prefer_remote_cdm"),
+        )
 
         super().__init__(output_path, "_ism_temp")
 
@@ -56,8 +76,8 @@ class ISM_Downloader(BaseDownloader):
         """
         Read PSSH / PRO data directly from ``Stream.drm`` on selected streams.
         """
-        result: Dict[str, List[Dict]] = {"WV": [], "PR": []}
-        seen:   Dict[str, set]        = {"WV": set(), "PR": set()}
+        result: Dict[str, List[Dict]] = {DRMType.WIDEVINE: [], DRMType.PLAYREADY: []}
+        seen:   Dict[str, set]        = {DRMType.WIDEVINE: set(), DRMType.PLAYREADY: set()}
 
         for s in streams:
             if not getattr(s, "selected", False):
@@ -67,28 +87,28 @@ class ISM_Downloader(BaseDownloader):
             if not (drm and drm.is_encrypted()):
                 continue
 
-            for dt in drm.get_all_drm_types():   # 'WV', 'PR', 'FP', 'UNK'
+            for dt in drm.get_all_drm_types():
                 if dt not in result:
-                    continue
-
-                pssh = drm.get_pssh_for(dt)
-                if not pssh:
                     continue
 
                 # Collect all KIDs for this stream
                 kids: List[str] = []
                 if hasattr(drm, "get_all_kids"):
                     kids = [k for k in drm.get_all_kids() if k and k != "N/A"]
-
                 if not kids:
                     for attr in ("kid", "default_kid"):
                         val = getattr(drm, attr, None)
                         if val and val != "N/A":
                             kids = [val]
                             break
-                
                 if not kids:
                     kids = ["N/A"]
+
+                pssh = drm.get_pssh_for(dt)
+
+                if not pssh:
+                    logger.warning("No PSSH found for this stream's DRM, skipping...")
+                    continue
 
                 for kid in kids:
                     dedup = (pssh, kid)
@@ -99,7 +119,7 @@ class ISM_Downloader(BaseDownloader):
                     result[dt].append({
                         "pssh": pssh,
                         "kid":  kid,
-                        "type": "Widevine" if dt == "WV" else "PlayReady",
+                        "type": "Widevine" if dt == DRMType.WIDEVINE else "PlayReady",
                     })
 
         return result
@@ -110,7 +130,7 @@ class ISM_Downloader(BaseDownloader):
         PSSH / PRO data.  If *raw_ism_path* is ``None`` or missing the parser
         re-fetches from the network.  Returns ``{}`` gracefully on any error.
         """
-        result: Dict[str, List[Dict]] = {"WV": [], "PR": []}
+        result: Dict[str, List[Dict]] = {DRMType.WIDEVINE: [], DRMType.PLAYREADY: []}
         try:
             content = None
             if raw_ism_path and os.path.exists(raw_ism_path):
@@ -123,14 +143,14 @@ class ISM_Downloader(BaseDownloader):
 
             drm_info = parser.get_drm_info()
             for entry in drm_info.get("widevine", []):
-                result["WV"].append({
+                result[DRMType.WIDEVINE].append({
                     "pssh": entry["pssh"],
                     "kid":  entry.get("kid", "N/A"),
                     "type": "Widevine",
                 })
 
             for entry in drm_info.get("playready", []):
-                result["PR"].append({
+                result[DRMType.PLAYREADY].append({
                     "pssh": entry["pssh"],
                     "kid":  entry.get("kid", "N/A"),
                     "type": "PlayReady",
@@ -145,60 +165,45 @@ class ISM_Downloader(BaseDownloader):
         """
         Dispatch key-fetch to :class:`DRMManager`.
 
-        Priority order (respects ``drm_preference``):
-
-        * ``"playready"`` → PlayReady only
+        * ``"playready"`` → PlayReady only (native ISM DRM)
         * ``"widevine"``  → Widevine only
-        * ``"auto"``      → PlayReady first, then Widevine if PR fails
-
-        Falls back to ``self.key`` (manual key) when DRM negotiation fails.
         """
-        drm_manager = DRMManager(
-            get_wvd_path(),
-            get_prd_path(),
-            config_manager.config.get_dict("DRM", "widevine",  default={}),
-            config_manager.config.get_dict("DRM", "playready", default={}),
-            config_manager.config.get_bool("DRM", "prefer_remote_cdm"),
-        )
-        pref = self.drm_preference   # 'playready' | 'widevine' | 'auto'
         keys = None
 
-        # PlayReady — native ISM DRM; try first for 'playready' and 'auto'
-        if pref in (_PR, "auto") and drm_psshs.get("PR"):
+        if self.drm_preference == DRMType.PLAYREADY and drm_psshs.get(DRMType.PLAYREADY):
             try:
-                keys = drm_manager.get_pr_keys(
-                    drm_psshs["PR"],
+                keys = self.drm_manager.get_pr_keys(
+                    drm_psshs[DRMType.PLAYREADY],
                     self.license_url,
-                    self.license_headers,
-                    self.key,
+                    headers=self.license_headers,
+                    key=self.key,
                 )
             except Exception as exc:
                 logger.error(f"PlayReady key fetch failed: {exc}")
 
-        # Widevine — uncommon for ISM but supported
-        if not keys and pref in (_WV, "auto") and drm_psshs.get("WV"):
+        if self.drm_preference == DRMType.WIDEVINE and drm_psshs.get(DRMType.WIDEVINE):
             try:
-                keys = drm_manager.get_wv_keys(
-                    drm_psshs["WV"],
+                keys = self.drm_manager.get_wv_keys(
+                    drm_psshs[DRMType.WIDEVINE],
                     self.license_url,
-                    self.license_certificate,
-                    self.license_headers,
-                    self.key,
+                    license_certificate=self.license_certificate,
+                    headers=self.license_headers,
+                    key=self.key,
                 )
             except Exception as exc:
                 logger.error(f"Widevine key fetch failed: {exc}")
-
+        
         # Manual key supplied directly
         if not keys and self.key:
             keys = [self.key] if isinstance(self.key, str) else list(self.key)
 
         return keys or []
 
-    def start(self) -> tuple[Optional[str], bool]:
+    def start(self) -> tuple[Optional[str], bool, Optional[str]]:
         """Execute the full ISM download pipeline."""
         if self.file_already_exists:
             console.print("[yellow]File already exists.")
-            return self.output_path, False
+            return self.output_path, False, None
 
         os_manager.create_path(self.output_dir)
 
@@ -237,7 +242,7 @@ class ISM_Downloader(BaseDownloader):
             drm_psshs = self._collect_drm_from_streams(streams)
 
             # Fallback: re-scan raw manifest via ISMParser
-            if not drm_psshs["WV"] and not drm_psshs["PR"]:
+            if not drm_psshs[DRMType.WIDEVINE] and not drm_psshs[DRMType.PLAYREADY]:
                 logger.info("No PSSH in Stream objects — falling back to ISMParser")
                 drm_psshs = self._collect_drm_from_ism(raw_ism)
 
@@ -245,7 +250,7 @@ class ISM_Downloader(BaseDownloader):
 
             if keys:
                 self.media_downloader.set_key(keys)
-            elif drm_psshs.get("WV") or drm_psshs.get("PR"):
+            elif drm_psshs.get(DRMType.WIDEVINE) or drm_psshs.get(DRMType.PLAYREADY):
                 console.print("[red]Warning: DRM detected but no decryption keys found")
         else:
             keys = []
@@ -260,7 +265,7 @@ class ISM_Downloader(BaseDownloader):
                     f"and sleeping {DELAY_SS} seconds..."
                 )
                 time.sleep(DELAY_SS)
-            return self.output_path, False
+            return self.output_path, False, None
 
         try:
             self.media_players = MediaPlayers(self.output_dir)
@@ -279,7 +284,7 @@ class ISM_Downloader(BaseDownloader):
                 download_tracker.complete_download(
                     self.download_id, success=False, error="cancelled"
                 )
-            return None, True
+            return None, True, "cancelled"
 
         if self._no_media_downloaded(status):
             logger.error("No media downloaded")
@@ -287,7 +292,7 @@ class ISM_Downloader(BaseDownloader):
                 download_tracker.complete_download(
                     self.download_id, success=False, error="No media downloaded"
                 )
-            return None, True
+            return None, True, "No media downloaded"
 
         # ── Merge ─────────────────────────────────────────────────────────────
         if self.download_id:
@@ -299,13 +304,13 @@ class ISM_Downloader(BaseDownloader):
                 download_tracker.complete_download(
                     self.download_id, success=False, error="cancelled"
                 )
-                return None, True
+                return None, True, "cancelled"
             logger.error("Merge failed")
             if self.download_id:
                 download_tracker.complete_download(
                     self.download_id, success=False, error="Merge failed"
                 )
-            return None, True
+            return None, True, "Merge failed"
 
         self._finalize(final_file=final_file)
 
@@ -313,4 +318,4 @@ class ISM_Downloader(BaseDownloader):
             console.print(f"\n[green]Sleeping {DELAY_SS} seconds before finishing...")
             time.sleep(DELAY_SS)
 
-        return self.output_path, False
+        return self.output_path, False, None

@@ -36,6 +36,7 @@ urlpatterns = [
 
     path("api/reload-config/", views.reload_config, name="reload_config"),
     path("api/upload-service/", views.upload_service_zip, name="upload_service_zip"),
+    path("api/registry-status/", views.registry_status, name="registry_status"),
 
     # ARR Integration
     path("api/arr/webhook/seerr/", views.seerr_webhook, name="seerr_webhook"),

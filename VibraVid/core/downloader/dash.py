@@ -16,6 +16,7 @@ from VibraVid.core.utils.media_players import MediaPlayers
 
 from VibraVid.core.source.downloader import MediaDownloader
 from VibraVid.core.drm.manager import DRMManager
+from VibraVid.core.drm.system import DRMType
 from VibraVid.core.manifest.mpd import DashParser
 
 from .base import BaseDownloader
@@ -29,8 +30,6 @@ SKIP_DOWNLOAD = config_manager.config.get_bool("DOWNLOAD", "skip_download")
 AUDIO_FILTER = config_manager.config.get("DOWNLOAD", "select_audio")
 SUBTITLE_FILTER = config_manager.config.get("DOWNLOAD", "select_subtitle")
 DELAY_SS = config_manager.config.get_int('DOWNLOAD', 'delay_after_download')
-_WV = "widevine"
-_PR = "playready"
 
 
 def _stream_drm_label(s) -> str:
@@ -174,7 +173,7 @@ class DASH_Downloader(BaseDownloader):
     """
     def __init__(self, mpd_url: Optional[str] = None, mpd_headers: Optional[Dict[str, str]] = None,
         license_url: Optional[str] = None, license_headers: Optional[Dict[str, str]] = None, license_certificate: Optional[str] = None, license_data: Optional[str] = None,
-        output_path: Optional[str] = None, drm_preference: str = "widevine", key: Optional[str] = None, cookies: Optional[Dict[str, str]] = None,
+        output_path: Optional[str] = None, drm_preference = DRMType.WIDEVINE, key: Optional[str] = None, cookies: Optional[Dict[str, str]] = None,
         max_segments: Optional[int] = None, other_tracks: Optional[list] = None,
     ):
         """
@@ -186,7 +185,6 @@ class DASH_Downloader(BaseDownloader):
             - license_certificate: Widevine certificate (base64) for license challenge.
             - license_data: PlayReady license data for SOAP envelope.
             - output_path: Output file path. Default: "download.{EXTENSION_OUTPUT}".
-            - drm_preference: DRM system to use: "widevine" or "playready".
             - key: Manual decryption key (hex format) if known.
             - cookies: HTTP cookies for authenticated requests.
             - max_segments: Maximum number of segments to download (for testing). Default: None (all).
@@ -214,12 +212,8 @@ class DASH_Downloader(BaseDownloader):
         self.license_certificate = license_certificate
         self.license_data = license_data
         logger.info(f"DASH Downloader initialized with MPD URL: {self.mpd_url}, License URL: {self.license_url}, DRM Preference: {drm_preference}, Key provided: {'yes' if key else 'no'}")
-
-        pref = drm_preference.lower()
-        if pref not in (_WV, _PR):
-            raise ValueError(f"drm_preference must be 'widevine' or 'playready', got: {drm_preference!r}")
-        self.drm_preference = pref
-
+        
+        self.drm_preference = drm_preference
         self.key = key
         self.cookies = cookies or {}
         self.max_segments = max_segments
@@ -247,12 +241,12 @@ class DASH_Downloader(BaseDownloader):
 
         Returns:
             {
-            'WV': [{'pssh': ..., 'kid': ..., 'type': 'Widevine', 'label': ...}, ...],
-            'PR': [{'pssh': ..., 'kid': ..., 'type': 'PlayReady', 'label': ...}, ...],
+                DRMType.WIDEVINE: [{'pssh': ..., 'kid': ..., 'type': 'Widevine', 'label': ...}, ...],
+                DRMType.PLAYREADY: [{'pssh': ..., 'kid': ..., 'type': 'PlayReady', 'label': ...}, ...],
             }
         """
-        result: Dict[str, List[Dict]] = {"WV": [], "PR": []}
-        seen: Dict[str, set] = {"WV": set(), "PR": set()}
+        result: Dict[str, List[Dict]] = {DRMType.WIDEVINE: [], DRMType.PLAYREADY: []}
+        seen: Dict[str, set] = {DRMType.WIDEVINE: set(), DRMType.PLAYREADY: set()}
 
         for s in streams:
             drm = getattr(s, "drm", None)
@@ -271,12 +265,8 @@ class DASH_Downloader(BaseDownloader):
             label = _stream_drm_label(s)
             logger.info(f"DASH DRM collected from stream: {s.id or 'unnamed'} | type={s.type} | encrypted={is_encrypted} | selected={is_selected}")
 
-            for dt in drm.get_all_drm_types():  # 'WV', 'PR', 'FP', 'UNK'
+            for dt in drm.get_all_drm_types():  # DRMType.WIDEVINE, DRMType.PLAYREADY, DRMType.FAIRPLAY, DRMType.UNKNOWN
                 if dt not in result:
-                    continue
-
-                pssh = drm.get_pssh_for(dt)
-                if not pssh:
                     continue
 
                 kids = []
@@ -291,6 +281,12 @@ class DASH_Downloader(BaseDownloader):
                 if not kids:
                     kids = ["N/A"]
 
+                pssh = drm.get_pssh_for(dt)
+
+                if not pssh:
+                    logger.warning("No PSSH found for this stream's DRM, skipping...")
+                    continue
+
                 for kid in kids:
                     dedup_key = (pssh, kid)
                     if dedup_key in seen[dt]:
@@ -302,7 +298,7 @@ class DASH_Downloader(BaseDownloader):
                         {
                             "pssh": pssh,
                             "kid": kid,
-                            "type": "Widevine" if dt == "WV" else "PlayReady",
+                            "type": "Widevine" if dt == DRMType.WIDEVINE else "PlayReady",
                             "label": label,
                         }
                     )
@@ -311,7 +307,7 @@ class DASH_Downloader(BaseDownloader):
 
     def _collect_drm_from_mpd(self, raw_mpd_path: Optional[str]) -> Dict[str, List[Dict]]:
         """Fallback: scan the saved raw .mpd via DashParser to extract PSSH."""
-        result: Dict[str, List[Dict]] = {"WV": [], "PR": []}
+        result: Dict[str, List[Dict]] = {DRMType.WIDEVINE: [], DRMType.PLAYREADY: []}
         try:
             logger.info(f"_collect_drm_from_mpd: Attempting fallback DRM extraction from raw_mpd_path={raw_mpd_path}")
             if raw_mpd_path and os.path.exists(raw_mpd_path):
@@ -329,8 +325,8 @@ class DASH_Downloader(BaseDownloader):
             # Fallback collection: don't check selected status (streams are freshly parsed)
             result = self._collect_drm_from_streams(streams, check_selected=False)
 
-            wv_count = len(result.get("WV", []))
-            pr_count = len(result.get("PR", []))
+            wv_count = len(result.get(DRMType.WIDEVINE, []))
+            pr_count = len(result.get(DRMType.PLAYREADY, []))
             logger.info(f"_collect_drm_from_mpd: Collected {wv_count} WV PSSH + {pr_count} PR PSSH")
 
         except Exception as exc:
@@ -343,27 +339,24 @@ class DASH_Downloader(BaseDownloader):
         Print a warning if the manifest contains only the DRM type that is NOT
         the requested drm_preference (and nothing for the preferred type).
         """
-        has_wv = bool(drm_psshs.get("WV"))
-        has_pr = bool(drm_psshs.get("PR"))
+        has_wv = bool(drm_psshs.get(DRMType.WIDEVINE))
+        has_pr = bool(drm_psshs.get(DRMType.PLAYREADY))
 
-        if self.drm_preference == _WV and not has_wv and has_pr:
-            console.print("[yellow]drm_preference='widevine' but the manifest contains only PlayReady PSSH/KID")
+        if self.drm_preference == DRMType.WIDEVINE and not has_wv and has_pr:
             logger.warning("DRM mismatch: preference=widevine but only PlayReady PSSH found.")
-
-        elif self.drm_preference == _PR and not has_pr and has_wv:
-            console.print("[yellow]drm_preference='playready' but the manifest contains only Widevine PSSH/KID")
+        elif self.drm_preference == DRMType.PLAYREADY and not has_pr and has_wv:
             logger.warning("DRM mismatch: preference=playready but only Widevine PSSH found.")
 
     def _fetch_keys(self, drm_psshs: Dict[str, List[Dict]]) -> List[str]:
         """Dispatch key fetch to DRMManager using the configured drm_preference."""
-        pref = self.drm_preference  # 'widevine' | 'playready'
         keys = None
 
-        if pref == _WV and drm_psshs.get("WV"):
-            keys = self.drm_manager.get_wv_keys(drm_psshs["WV"], self.license_url, self.license_data, self.license_certificate, self.license_headers, self.key)
-        elif pref == _PR and drm_psshs.get("PR"):
-            keys = self.drm_manager.get_pr_keys(drm_psshs["PR"], self.license_url, self.license_headers, self.key, self.license_data)
-           
+        if self.drm_preference == DRMType.WIDEVINE and drm_psshs.get(DRMType.WIDEVINE):
+            keys = self.drm_manager.get_wv_keys(drm_psshs[DRMType.WIDEVINE], self.license_url, self.license_data, self.license_certificate, self.license_headers, self.key)
+
+        if self.drm_preference == DRMType.PLAYREADY and drm_psshs.get(DRMType.PLAYREADY):
+            keys = self.drm_manager.get_pr_keys(drm_psshs[DRMType.PLAYREADY], self.license_url, self.license_headers, self.key, self.license_data)
+
         # Final fallback: use a manually provided key
         if not keys and self.key:
             keys = [self.key] if isinstance(self.key, str) else list(self.key)
@@ -374,7 +367,7 @@ class DASH_Downloader(BaseDownloader):
         """Fetch DRM keys for an extra-audio MPD. Primary: Stream.drm; fallback: DashParser."""
         drm_psshs = self._collect_drm_from_streams(streams)
 
-        if not drm_psshs["WV"] and not drm_psshs["PR"]:
+        if not drm_psshs[DRMType.WIDEVINE] and not drm_psshs[DRMType.PLAYREADY]:
             try:
                 if raw_mpd_path and os.path.exists(raw_mpd_path):
                     with open(raw_mpd_path, "r", encoding="utf-8") as f:
@@ -386,26 +379,39 @@ class DASH_Downloader(BaseDownloader):
 
                 extra_streams = parser.parse_streams()
                 extra_drm = self._collect_drm_from_streams(extra_streams)
-                for e in extra_drm.get("WV", []):
-                    drm_psshs["WV"].append(e)
-                for e in extra_drm.get("PR", []):
-                    drm_psshs["PR"].append(e)
+
+                for e in extra_drm.get(DRMType.WIDEVINE, []):
+                    drm_psshs[DRMType.WIDEVINE].append(e)
+                for e in extra_drm.get(DRMType.PLAYREADY, []):
+                    drm_psshs[DRMType.PLAYREADY].append(e)
+
             except Exception as exc:
                 logger.error(f"Audio DashParser fallback: {exc}")
 
-        if not drm_psshs["WV"] and not drm_psshs["PR"]:
+        if not drm_psshs[DRMType.WIDEVINE] and not drm_psshs[DRMType.PLAYREADY]:
             return []
 
         self._warn_drm_mismatch(drm_psshs)
         eff_url = license_url or self.license_url
         eff_hdrs = license_hdrs or self.license_headers
-        pref = self.drm_preference
 
         keys = None
-        if pref == _WV and drm_psshs.get("WV"):
-            keys = self.drm_manager.get_wv_keys(drm_psshs["WV"], eff_url, self.license_certificate, eff_hdrs, self.key)
-        elif pref == _PR and drm_psshs.get("PR"):
-            keys = self.drm_manager.get_pr_keys(drm_psshs["PR"], eff_url, eff_hdrs, self.key, self.license_data)
+        if self.drm_preference == DRMType.WIDEVINE and drm_psshs.get(DRMType.WIDEVINE):
+            keys = self.drm_manager.get_wv_keys(
+                drm_psshs[DRMType.WIDEVINE], eff_url,
+                license_certificate=self.license_certificate,
+                headers=eff_hdrs,
+                key=self.key,
+            )
+        
+        elif self.drm_preference == DRMType.PLAYREADY and drm_psshs.get(DRMType.PLAYREADY):
+            keys = self.drm_manager.get_pr_keys(
+                drm_psshs[DRMType.PLAYREADY], eff_url,
+                headers=eff_hdrs,
+                key=self.key,
+                license_data=self.license_data,
+            )
+
         return keys or []
     
     # ──────────────────────────────────────────────────────────────────────────
@@ -513,14 +519,14 @@ class DASH_Downloader(BaseDownloader):
     # ──────────────────────────────────────────────────────────────────────────
     # Main entry point
     # ──────────────────────────────────────────────────────────────────────────
-    def start(self) -> tuple[Optional[str], bool]:
+    def start(self) -> tuple[Optional[str], bool, Optional[str]]:
         """
         Execute the full DASH download pipeline.
         Returns ``(output_path, cancelled)`` — cancelled=True means abort.
         """
         if self.file_already_exists:
             console.print("[yellow]File already exists.")
-            return self.output_path, False
+            return self.output_path, False, None
 
         os_manager.create_path(self.output_dir)
 
@@ -567,12 +573,12 @@ class DASH_Downloader(BaseDownloader):
 
         # ── DRM ───────────────────────────────────────────────────────────────
         drm_psshs = self._collect_drm_from_streams(streams)
-        is_protected = bool(drm_psshs.get("WV") or drm_psshs.get("PR"))
+        is_protected = bool(drm_psshs.get(DRMType.WIDEVINE) or drm_psshs.get(DRMType.PLAYREADY))
 
         if not is_protected and raw_mpd:
             logger.info("No PSSH in Stream objects — falling back to MPDParser")
             drm_psshs = self._collect_drm_from_mpd(raw_mpd)
-            is_protected = bool(drm_psshs.get("WV") or drm_psshs.get("PR"))
+            is_protected = bool(drm_psshs.get(DRMType.WIDEVINE) or drm_psshs.get(DRMType.PLAYREADY))
 
         if is_protected:
             self._warn_drm_mismatch(drm_psshs)
@@ -587,7 +593,7 @@ class DASH_Downloader(BaseDownloader):
                 self.error = "Failed to fetch decryption keys"
                 if self.download_id:
                     download_tracker.complete_download(self.download_id, success=False, error=self.error)
-                return None, True
+                return None, True, self.error
 
         # ── Download ──────────────────────────────────────────────────────────
         self._log_tracks_json(streams, self.decryption_keys, self.mpd_url)
@@ -595,7 +601,7 @@ class DASH_Downloader(BaseDownloader):
             if DELAY_SS > 0:
                 console.print(f"\n[yellow]Skipping download as per configuration and sleeping {DELAY_SS} seconds...")
                 time.sleep(DELAY_SS)
-            return self.output_path, False
+            return self.output_path, False, None
 
         if self.download_id:
             download_tracker.update_status(self.download_id, "Downloading ...")
@@ -607,13 +613,13 @@ class DASH_Downloader(BaseDownloader):
         if status.get("error") == "cancelled":
             if self.download_id:
                 download_tracker.complete_download(self.download_id, success=False, error="cancelled")
-            return None, True
+            return None, True, "cancelled"
 
         if self._no_media_downloaded(status):
             logger.error("No media downloaded")
             if self.download_id:
                 download_tracker.complete_download(self.download_id, success=False, error="No media downloaded")
-            return None, True
+            return None, True, "No media downloaded"
 
         # ── Extra audio MPDs ──────────────────────────────────────────────────
         if self._dash_audio_tracks and AUDIO_FILTER != "false":
@@ -636,14 +642,14 @@ class DASH_Downloader(BaseDownloader):
         if not final_file:
             if self.download_id and download_tracker.is_stopped(self.download_id):
                 download_tracker.complete_download(self.download_id, success=False, error="cancelled")
-                return None, True
+                return None, True, "cancelled"
             logger.error("Merge failed")
             if self.download_id:
                 download_tracker.complete_download(self.download_id, success=False, error="Merge failed")
-            return None, True
+            return None, True, "Merge failed"
 
         self._finalize(final_file=final_file)
         if DELAY_SS > 0:
             console.print(f"\n[green]Sleeping {DELAY_SS} seconds before finishing...")
             time.sleep(DELAY_SS)
-        return self.output_path, False
+        return self.output_path, False, None

@@ -1,7 +1,6 @@
 # 03.05.26
 
 import re
-import base64
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -15,35 +14,36 @@ from VibraVid.utils.http_client import create_client, get_headers
 from VibraVid.core.manifest.stream import DRMInfo, Segment, Stream
 from VibraVid.core.utils.language import resolve_locale
 from VibraVid.core.manifest._utils import save_raw_manifest
+from VibraVid.core.drm.system import _DRMSystems, DRMType
 
 
 console = Console()
 logger = logging.getLogger(__name__)
 
-_PLAYREADY_SYSTEM_ID = "9a04f079-9840-4286-ab92-e65be0885f95"
-_WIDEVINE_SYSTEM_ID  = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
+_PLAYREADY_SYSTEM_ID = _DRMSystems.to_system_id(_DRMSystems.PLAYREADY)
+_WIDEVINE_SYSTEM_ID  = _DRMSystems.to_system_id(_DRMSystems.WIDEVINE)
+
 _FOURCC_TO_CODEC: Dict[str, str] = {
-    "h264": "avc1", "avc1": "avc1", "avc ": "avc1",
-    "hevc": "hvc1", "hvc1": "hvc1", "hev1": "hvc1",
-    "aacl": "mp4a.40.2", "aach": "mp4a.40.5", "aacp": "mp4a.40.29",
-    "ec-3": "ec-3",  "ac-3": "ac-3",
-    "wma2": "wma",   "wmap": "wmap",
-    "ttml": "ttml",  "dfxp": "ttml",
+    "h264": "avc1", 
+    "avc1": "avc1", 
+    "avc ": "avc1",
+    "hevc": "hvc1", 
+    "hvc1": "hvc1", 
+    "hev1": "hvc1",
+    "aacl": "mp4a.40.2", 
+    "aach": "mp4a.40.5", 
+    "aacp": "mp4a.40.29",
+    "ec-3": "ec-3",  
+    "ac-3": "ac-3",
+    "wma2": "wma",   
+    "wmap": "wmap",
+    "ttml": "ttml",  
+    "dfxp": "ttml",
 }
 
 
 def _fourcc_to_codec(fourcc: str) -> str:
     return _FOURCC_TO_CODEC.get((fourcc or "").lower(), (fourcc or "").lower())
-
-
-def _norm_system_id(raw: str) -> str:
-    """Normalise a GUID/SystemID to lower-case dashed form."""
-    s = (raw or "").lower().replace("{", "").replace("}", "").strip()
-    
-    # 32 hex chars without dashes → insert dashes
-    if len(s) == 32 and "-" not in s:
-        s = f"{s[0:8]}-{s[8:12]}-{s[12:16]}-{s[16:20]}-{s[20:32]}"
-    return s
 
 
 class ISMParser:
@@ -345,20 +345,20 @@ class ISMParser:
 
         for ph in protection.findall("ProtectionHeader"):
             system_id_raw = ph.get("SystemID") or ""
-            system_id     = _norm_system_id(system_id_raw)
+            system_id     = _DRMSystems.norm_system_id(system_id_raw)
             raw_data      = (ph.text or "").strip()
             if not raw_data:
                 continue
 
             if system_id == _PLAYREADY_SYSTEM_ID:
                 # raw_data is a base64-encoded PRO — treat as "PSSH" for DRMInfo
-                info.set_pssh(raw_data, drm_type_hint="PR")
+                info.set_pssh(raw_data, drm_type_hint=DRMType.PLAYREADY)
                 info.set_method(_PLAYREADY_SYSTEM_ID)
                 logger.info(f"ISMParser: PlayReady PRO found (len={len(raw_data)})")
 
                 # Attempt KID extraction from the PRO binary
                 try:
-                    kid = self._extract_kid_from_pro(raw_data)
+                    kid = _DRMSystems.extract_kid_from_playready_pro(raw_data)
                     if kid:
                         info.set_kid(kid)
                         logger.info(f"ISMParser: KID extracted from PRO: {kid}")
@@ -366,7 +366,7 @@ class ISMParser:
                     logger.debug(f"ISMParser: KID extraction from PRO failed: {exc}")
 
             elif system_id == _WIDEVINE_SYSTEM_ID:
-                info.set_pssh(raw_data, drm_type_hint="WV")
+                info.set_pssh(raw_data, drm_type_hint=DRMType.WIDEVINE)
                 info.set_method(_WIDEVINE_SYSTEM_ID)
                 logger.info("ISMParser: Widevine PSSH found in ProtectionHeader")
 
@@ -374,74 +374,6 @@ class ISMParser:
                 logger.info(f"ISMParser: unknown SystemID {system_id!r} in ProtectionHeader — skipping")
 
         return info
-
-    @staticmethod
-    def _extract_kid_from_pro(pro_b64: str) -> Optional[str]:
-        """
-        Decode a PlayReady Object (PRO) and extract the KID.
-
-        PRO binary layout::
-
-            4 bytes  total length
-            2 bytes  object record count
-            For each record:
-                2 bytes  record type  (0x0001 = WRMHeader XML)
-                2 bytes  record length (bytes)
-                N bytes  record content (UTF-16 LE for WRMHeader)
-
-        The WRMHeader XML contains either:
-            - ``<KID>`` element (v4.1): base64(GUID in little-endian bytes)
-            - ``KeyID="..."`` attribute (v4.0): raw GUID string
-        """
-        try:
-            data = base64.b64decode(pro_b64)
-        except Exception:
-            return None
-
-        try:
-            if len(data) < 6:
-                return None
-
-            offset = 6   # skip 4-byte total-length + 2-byte object-count
-            while offset + 4 <= len(data):
-                rec_type = int.from_bytes(data[offset:offset + 2], "little")
-                rec_len  = int.from_bytes(data[offset + 2:offset + 4], "little")
-                offset  += 4
-                if rec_len <= 0 or offset + rec_len > len(data):
-                    break
-
-                if rec_type == 0x0001:          # WRMHeader XML
-                    xml_bytes = data[offset:offset + rec_len]
-                    wrm_xml   = xml_bytes.decode("utf-16-le", errors="ignore")
-
-                    # v4.1 header: <KID>base64-guid-bytes</KID>
-                    m = re.search(r"<KID[^>]*>([A-Za-z0-9+/=]+)</KID>", wrm_xml)
-                    if m:
-                        kid_b64   = m.group(1).strip()
-                        kid_bytes = base64.b64decode(kid_b64)
-                        if len(kid_bytes) == 16:
-                            # PRO stores the GUID in mixed-endian (first three
-                            # components little-endian, last two big-endian)
-                            b = kid_bytes
-                            kid_hex = (
-                                f"{b[3]:02x}{b[2]:02x}{b[1]:02x}{b[0]:02x}"
-                                f"{b[5]:02x}{b[4]:02x}"
-                                f"{b[7]:02x}{b[6]:02x}"
-                                + b[8:16].hex()
-                            )
-                            return kid_hex
-
-                    # v4.0 header: CHECKSUM="..." ALGID="..." KeyID="..."{...}
-                    m = re.search(r'KeyID="([^"]+)"', wrm_xml)
-                    if m:
-                        return m.group(1).strip()
-
-                offset += rec_len
-
-        except Exception as exc:
-            logger.debug(f"ISMParser._extract_kid_from_pro parse error: {exc}")
-
-        return None
 
     def get_drm_info(self) -> Dict:
         """
@@ -460,11 +392,11 @@ class ISMParser:
 
         drm = self._extract_drm(self._root)
 
-        pssh_wv = drm.get_pssh_for("WV")
+        pssh_wv = drm.get_pssh_for(DRMType.WIDEVINE)
         if pssh_wv:
             result["widevine"].append({"pssh": pssh_wv, "type": "Widevine", "kid": drm.kid})
 
-        pssh_pr = drm.get_pssh_for("PR")
+        pssh_pr = drm.get_pssh_for(DRMType.PLAYREADY)
         if pssh_pr:
             result["playready"].append({"pssh": pssh_pr, "type": "PlayReady", "kid": drm.kid})
 

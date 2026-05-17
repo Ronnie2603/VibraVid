@@ -12,7 +12,7 @@ SHOW_DURATION = False
 
 
 class CustomBarColumn(ProgressColumn):
-    def __init__(self, bar_width=40, complete_char="-", incomplete_char="-", complete_style="bright_magenta", incomplete_style="dim white"):
+    def __init__(self, bar_width=30, complete_char="-", incomplete_char="-", complete_style="bright_magenta", incomplete_style="dim white"):
         super().__init__()
         self.bar_width = bar_width
         self.complete_char = complete_char
@@ -59,10 +59,10 @@ class CompactTimeRemainingColumn(ProgressColumn):
 
 class ColoredSegmentColumn(ProgressColumn):
     def render(self, task):
-        segment = task.fields.get("segment", "0/0")
+        segment = task.fields.get("segment") or "0/0"
         text = Text()
         if "/" in segment:
-            current, total = segment.split("/")
+            current, total = segment.split("/", 1)
             text.append(current, style="green")
             text.append("/", style="dim")
             text.append(total, style="cyan")

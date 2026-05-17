@@ -41,7 +41,7 @@ class DownloadBarManager:
             if context_tracker.is_gui
             else Progress(
                 TextColumn("[purple]{task.description}", justify="left"),
-                CustomBarColumn(bar_width=40),
+                CustomBarColumn(),
                 ColoredSegmentColumn(),
                 *time_columns,
                 TransferStatsColumn(),

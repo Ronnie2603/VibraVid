@@ -21,12 +21,16 @@ from VibraVid.cli.run import execute_hooks
 
 console = Console()
 logger = logging.getLogger(__name__)
-
+LAST_DOWNLOADER_ERROR: Optional[str] = None
 EXTENSION_OUTPUT = config_manager.config.get("PROCESS", "extension")
 MERGE_SUBTITLES = config_manager.config.get_bool("PROCESS", "merge_subtitle")
 MERGE_AUDIO = config_manager.config.get_bool("PROCESS", "merge_audio")
 CLEANUP_TMP = config_manager.config.get_bool("DOWNLOAD", "cleanup_tmp_folder")
 DEBUG_TRACK_JSON = config_manager.config.get_bool("DEFAULT", "debug_track_json")
+
+
+def get_last_downloader_error() -> Optional[str]:
+    return LAST_DOWNLOADER_ERROR
 
 
 class BaseDownloader:
@@ -48,12 +52,25 @@ class BaseDownloader:
         self.download_id = context_tracker.download_id
         self.site_name = context_tracker.site_name
 
-        self.error = None
+        self._error = None
         self.last_merge_result = None
         self.media_players = None
         self.copied_subtitles = []
         self.copied_audios = []
         self.audio_only = False
+
+    @property
+    def error(self) -> Optional[str]:
+        return getattr(self, "_error", None)
+
+    @error.setter
+    def error(self, value: Optional[str]) -> None:
+        self._error = value
+        global LAST_DOWNLOADER_ERROR
+        try:
+            LAST_DOWNLOADER_ERROR = str(value) if value is not None else None
+        except Exception:
+            LAST_DOWNLOADER_ERROR = None
 
     @staticmethod
     def _resolve_url(url_or_path: str) -> str:
@@ -177,8 +194,6 @@ class BaseDownloader:
                         service=site_str,
                     )
                     logger.debug(f"[TRACK] Track result: {result}")
-                else:
-                    logger.warning("[TRACK] supa_vault not initialized (VAULT_URL empty or not configured)")
             except Exception as e:
                 logger.error(f"[TRACK] Error tracking download: {e}", exc_info=True)
 
@@ -347,7 +362,6 @@ class BaseDownloader:
 
 
         if not audio_tracks and not subtitle_tracks:
-            console.print("[cyan]\nNo additional tracks to merge, muxing video...")
             merged_file, result_json = join_video(
                 video_path=video_path,
                 out_path=self.output_path,

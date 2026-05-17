@@ -5,14 +5,16 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from VibraVid.core.drm.system import _DRMSystems, DRMType
+
 
 logger = logging.getLogger(__name__)
 
 
 class DRMInfo:
-    WIDEVINE_SYSTEM_ID = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
-    PLAYREADY_SYSTEM_ID = "9a04f079-9840-4286-ab92-e65be0885f95"
-    FAIRPLAY_SYSTEM_ID = "94ce86fb-07ff-4f43-adb8-93d2fa968ca2"
+    WIDEVINE_SYSTEM_ID = _DRMSystems.to_system_id(_DRMSystems.WIDEVINE)
+    PLAYREADY_SYSTEM_ID = _DRMSystems.to_system_id(_DRMSystems.PLAYREADY)
+    FAIRPLAY_SYSTEM_ID = _DRMSystems.to_system_id(_DRMSystems.FAIRPLAY)
 
     def __init__(self):
         self.pssh = None
@@ -31,7 +33,7 @@ class DRMInfo:
 
         # FairPlay SKD URI is not a base64 PSSH box; keep it as opaque value.
         if isinstance(pssh_base64, str) and pssh_base64.lower().startswith("skd:"):
-            detected = (drm_type_hint or "FP").upper()
+            detected = (drm_type_hint or DRMType.FAIRPLAY).upper()
             self._pssh_by_type[detected] = pssh_base64
             if detected not in self._drm_types:
                 self._drm_types.append(detected)
@@ -43,39 +45,39 @@ class DRMInfo:
             from pywidevine.pssh import PSSH as WV_PSSH
             from uuid import UUID as _UUID
 
-            _WV_UUID = _UUID(hex="edef8ba979d64acea3c827dcd51d21ed")
-            _PR_UUID = _UUID(hex="9a04f07998404286ab92e65be0885f95")
-            _FP_UUID = _UUID(hex="94ce86fb07ff4f43adb893d2fa968ca2")
+            _WV_UUID = _UUID(hex=_DRMSystems.WIDEVINE)
+            _PR_UUID = _UUID(hex=_DRMSystems.PLAYREADY)
+            _FP_UUID = _UUID(hex=_DRMSystems.FAIRPLAY)
 
             wv_obj = WV_PSSH(pssh_base64)
             sid = wv_obj.system_id
             self.system_id = str(sid)
 
             if sid == _WV_UUID:
-                detected = "WV"
+                detected = DRMType.WIDEVINE
             elif sid == _PR_UUID:
-                detected = "PR"
+                detected = DRMType.PLAYREADY
             elif sid == _FP_UUID:
-                detected = "FP"
+                detected = DRMType.FAIRPLAY
             else:
-                detected = "UNK"
+                detected = DRMType.UNKNOWN
                 
         except ImportError:
             pass
         except Exception as exc:
             logger.error(f"DRMInfo.set_pssh [pywidevine] error: {exc}")
 
-        if (not detected or detected == "UNK") and ((drm_type_hint or "").upper() in ("PR", "PLAYREADY") or (self.drm_type or "") == "PR"):
+        if (not detected or detected == DRMType.UNKNOWN) and ((drm_type_hint or "").upper() == DRMType.PLAYREADY or (self.drm_type or "") == DRMType.PLAYREADY):
             try:
                 from pyplayready.system.pssh import PSSH as PR_PSSH
                 PR_PSSH(pssh_base64)
-                detected = "PR"
+                detected = DRMType.PLAYREADY
             except ImportError:
                 pass
             except Exception as exc:
                 logger.error(f"DRMInfo.set_pssh [pyplayready] error: {exc}")
 
-        if not detected or detected == "UNK":
+        if not detected or detected == DRMType.UNKNOWN:
             try:
                 data = base64.b64decode(pssh_base64)
                 if len(data) >= 28 and data[4:8] == b"pssh":
@@ -85,31 +87,34 @@ class DRMInfo:
                         sid_bytes[6:8].hex(), sid_bytes[8:10].hex(),
                         sid_bytes[10:16].hex(),
                     ])
+
                     self.system_id = sid_str
                     sid_lo = sid_str.lower()
                     if sid_lo == self.WIDEVINE_SYSTEM_ID:
-                        detected = "WV"
+                        detected = DRMType.WIDEVINE
                     elif sid_lo == self.PLAYREADY_SYSTEM_ID:
-                        detected = "PR"
+                        detected = DRMType.PLAYREADY
                     elif sid_lo == self.FAIRPLAY_SYSTEM_ID:
-                        detected = "FP"
+                        detected = DRMType.FAIRPLAY
                     else:
-                        detected = "UNK"
+                        detected = DRMType.UNKNOWN
+
             except Exception as exc:
                 logger.error(f"DRMInfo.set_pssh [manual] error: {exc}")
 
-        if not detected or detected == "UNK":
+        if not detected or detected == DRMType.UNKNOWN:
             if drm_type_hint:
                 detected = drm_type_hint.upper()
-            elif self.drm_type and self.drm_type != "UNK":
+            elif self.drm_type and self.drm_type != DRMType.UNKNOWN:
                 detected = self.drm_type
             else:
-                detected = "UNK"
+                detected = DRMType.UNKNOWN
 
         self._pssh_by_type[detected] = pssh_base64
         if detected not in self._drm_types:
             self._drm_types.append(detected)
-        for pref in ("WV", "PR", "FP", "UNK"):
+        
+        for pref in (DRMType.WIDEVINE, DRMType.PLAYREADY, DRMType.FAIRPLAY, DRMType.UNKNOWN):
             if pref in self._pssh_by_type:
                 self.pssh = self._pssh_by_type[pref]
                 self.drm_type = pref
@@ -148,6 +153,7 @@ class DRMInfo:
     def set_method(self, scheme_id_uri: str) -> None:
         if not scheme_id_uri:
             return
+        
         s = scheme_id_uri.lower()
         if "cbcs" in s:
             self.method = "cbcs"
@@ -155,15 +161,18 @@ class DRMInfo:
             self.method = "cenc"
         else:
             self.method = (scheme_id_uri.split(":")[-1] if ":" in scheme_id_uri else scheme_id_uri)
+        
         detected = None
         if self.WIDEVINE_SYSTEM_ID in s or "widevine" in s:
-            detected = "WV"
+            detected = DRMType.WIDEVINE
         elif self.PLAYREADY_SYSTEM_ID in s or "playready" in s or "com.microsoft" in s:
-            detected = "PR"
+            detected = DRMType.PLAYREADY
         elif self.FAIRPLAY_SYSTEM_ID in s or "fairplay" in s or "com.apple" in s:
-            detected = "FP"
+            detected = DRMType.FAIRPLAY
+        
         if detected and detected not in self._drm_types:
             self._drm_types.append(detected)
+        
         if not self.drm_type and detected:
             self.drm_type = detected
 
@@ -173,15 +182,19 @@ class DRMInfo:
     def get_drm_display(self) -> str:
         if self._drm_types:
             return "+".join(self._drm_types)
+        
         if self.drm_type:
             return self.drm_type
+        
         if self.default_kids:
             first = self.default_kids[0][:8] + "…"
             if len(self.default_kids) > 1:
                 return f"{first} (+{len(self.default_kids) - 1})"
             return first
+        
         if self.default_kid:
             return self.default_kid[:8] + "…"
+        
         return "-"
 
     def get_key_pair(self) -> Optional[str]:
@@ -193,6 +206,7 @@ class DRMInfo:
     def __repr__(self) -> str:
         if not self.is_encrypted():
             return "DRMInfo(plain)"
+        
         kid_source = self.kid or self.default_kid or (self.default_kids[0] if self.default_kids else "")
         kid = kid_source[:8]
         types = "+".join(self._drm_types) if self._drm_types else (self.drm_type or "?")

@@ -2,6 +2,7 @@
 
 import os
 import re
+import sys
 import time
 import json
 import threading
@@ -226,6 +227,21 @@ def shutdown_downloads():
     download_executor.shutdown(wait=True)
 
 
+def _submit_download_task(fn):
+    """Submit a task to the download executor, recreating it if it was shutdown."""
+    global download_executor
+    try:
+        return download_executor.submit(fn)
+    except RuntimeError:
+        # Executor has been shutdown (interpreter shutdown or explicit call). Recreate.
+        try:
+            download_executor = concurrent.futures.ThreadPoolExecutor(max_workers=10, thread_name_prefix="DownloadWorker")
+            return download_executor.submit(fn)
+        except Exception as exc:
+            print(f"[Error] Could not recreate download executor: {exc}")
+            raise
+
+
 # Ensure downloads are shut down on exit
 atexit.register(shutdown_downloads)
 
@@ -250,16 +266,22 @@ if threading.current_thread() is threading.main_thread():
 def _media_item_to_display_dict(item: Entries, source_alias: str) -> Dict[str, Any]:
     """Convert Entries to template-friendly dictionary."""
     poster_url = item.poster if item.poster else "https://via.placeholder.com/300x450?text=Search"
+    
+    # Treat songs as 'movie' in the GUI so they show a direct Download button
+    display_is_movie = bool(item.is_movie or (str(item.type or "").strip().lower() == 'song'))
+
     result = {
         'display_title': item.name,
         'display_type': item.type.capitalize(),
         'source': source_alias.capitalize(),
         'source_alias': source_alias,
         'bg_image_url': poster_url,
-        'is_movie': item.is_movie,
+        'is_movie': display_is_movie,
         'year': item.year
     }
-    result['payload_json'] = json.dumps({**item.__dict__, 'is_movie': item.is_movie})
+
+    # Ensure payload reflects the GUI behaviour (so start_download treats songs like single-item downloads)
+    result['payload_json'] = json.dumps({**item.__dict__, 'is_movie': display_is_movie})
     return result
 
 
@@ -320,11 +342,12 @@ def search(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _run_download_in_thread(site: str, item_payload: Dict[str, Any], season: str = None, episodes: str = None, media_type: str = "Film", output_path: str = None) -> "concurrent.futures.Future":
+def _run_download_in_thread(site: str, item_payload: Dict[str, Any], season: str = None, episodes: str = None, media_type: str = "Film", output_path: str = None, audio_format: str = None) -> "concurrent.futures.Future":
     """Run download in background thread. Returns a Future for callers that need to wait.
 
     Args:
         output_path: If provided, tells VibraVid to download to this specific folder.
+        audio_format: If provided, forwarded to providers that support format selection (e.g. Spotify).
     """
     name = item_payload.get('name', 'Unknown')
     if season and episodes:
@@ -358,14 +381,20 @@ def _run_download_in_thread(site: str, item_payload: Dict[str, Any], season: str
             entries_fields = {k: v for k, v in item_payload.items() if k in Entries.__dataclass_fields__}
             media_item = Entries(**entries_fields)
 
-            # Start download
-            print("[_task] Calling api.start_download with:")
-            print(f"        season={season}, episodes={episodes}, output_path={output_path}")
-            # output_path is not a parameter of start_download() — store it in the
-            # thread-local context so downstream helpers can read it if needed.
+            # audio_format override for providers that support it (e.g. Spotify)
+            if audio_format:
+                media_item.audio_format = audio_format
+
+            # output_path stored in context so downstream helpers can read it
             if output_path:
                 context_tracker.output_path = output_path
-            api.start_download(media_item, season=season, episodes=episodes)
+
+            print("[_task] Calling api.start_download with:")
+            print(f"        season={season}, episodes={episodes}, output_path={output_path}, audio_format={audio_format}")
+            try:
+                api.start_download(media_item, season=season, episodes=episodes, audio_format=audio_format)
+            except TypeError:
+                api.start_download(media_item, season=season, episodes=episodes)
             print("[_task] ✓ Download completed successfully")
         except Exception as e:
             error_msg = str(e) or "Errore sconosciuto"
@@ -465,12 +494,15 @@ def start_download(request: HttpRequest) -> HttpResponse:
     item_payload_raw = form.cleaned_data["item_payload"]
     season = form.cleaned_data.get("season") or None
     episode = form.cleaned_data.get("episode") or None
+    audio_format = form.cleaned_data.get("audio_format") or None
 
     # Normalize
     if season:
         season = str(season).strip() or None
     if episode:
         episode = str(episode).strip() or None
+    if audio_format:
+        audio_format = str(audio_format).strip().lower() or None
 
     try:
         item_payload = json.loads(item_payload_raw)
@@ -479,14 +511,22 @@ def start_download(request: HttpRequest) -> HttpResponse:
         return redirect("search_home")
 
     # Determine media type
-    media_type = "Film" if item_payload.get("is_movie") else "Serie"
+    item_type = str(item_payload.get("type") or "").lower()
+    if item_type in ("song", "track", "music"):
+        media_type = "Musica"
+    elif item_type == "album":
+        media_type = "Album"
+    elif item_payload.get("is_movie"):
+        media_type = "Film"
+    else:
+        media_type = "Serie"
 
     # Check for series episode selection
     if media_type == "Serie" and season and not episode:
         messages.error(request, "Seleziona almeno un episodio prima di scaricare!")
 
     # Run download
-    _run_download_in_thread(source_alias, item_payload, season, episode, media_type)
+    _run_download_in_thread(source_alias, item_payload, season, episode, media_type, audio_format=audio_format)
     return redirect("download_dashboard")
 
 
@@ -660,7 +700,7 @@ def _handle_series_download(request: HttpRequest) -> HttpResponse:
             except Exception as e:
                 print(f"[Error] Full series download task: {e}")
 
-        download_executor.submit(_download_entire_series_task)
+        _submit_download_task(_download_entire_series_task)
 
         return redirect("download_dashboard")
 
@@ -738,7 +778,7 @@ def _handle_series_download(request: HttpRequest) -> HttpResponse:
             except Exception as e:
                 print(f"[Error] Selected seasons download task: {e}")
 
-        download_executor.submit(_download_selected_seasons_task)
+        _submit_download_task(_download_selected_seasons_task)
 
         return redirect("download_dashboard")
 
@@ -1179,7 +1219,10 @@ def upload_service_zip(request: HttpRequest) -> JsonResponse:
     """
     Handle ZIP file upload to install a new service plugin.
     Extracts the ZIP into VibraVid/services/, validates the structure,
-    creates a GUI API stub, and reloads the service registry.
+    and reloads the service registry. A uploaded service will only appear in
+    the GUI dropdown if a matching static stub exists in
+    GUI/searchapp/api/<service_name>.py — uploaded plugins are expected to
+    ship that stub themselves (no auto-generation: explicit > implicit).
     """
     uploaded = request.FILES.get("service_zip")
     if not uploaded:
@@ -1236,10 +1279,49 @@ def upload_service_zip(request: HttpRequest) -> JsonResponse:
                 "error": "Nessun servizio valido trovato nello ZIP. Ogni servizio deve contenere __init__.py con 'indice' e '_useFor'."
             }, status=400)
 
+        import ast as _ast
+
         for svc_rel in service_folders:
             svc_path = os.path.join(tmp_dir, svc_rel)
             svc_name = os.path.basename(svc_rel).lower()
             init_path = os.path.join(svc_path, "__init__.py")
+
+            # Refuse to overwrite reserved infrastructure directories.
+            # Without this guard, a malicious or malformed ZIP could replace
+            # _base/ (the shared loader/manager code every service depends on)
+            # and silently break every other service in the registry.
+            if svc_name.startswith("_") or svc_name in {"base", "_base"}:
+                errors.append(f"'{svc_name}': nome riservato, non può essere installato come servizio")
+                continue
+
+            # Reject plugins that contain Python files with syntax errors.
+            # Without this check a broken upload silently lands on disk and
+            # explodes only when the user runs a search, producing
+            # confusing errors like "unterminated string literal at line 616"
+            # from a file no one knows how to find.
+            syntax_error = None
+            for root, _, files in os.walk(svc_path):
+                for fname in files:
+                    if not fname.endswith(".py"):
+                        continue
+                    fpath = os.path.join(root, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as fh:
+                            src = fh.read()
+                        _ast.parse(src, filename=fname)
+                    except SyntaxError as se:
+                        rel = os.path.relpath(fpath, svc_path)
+                        syntax_error = f"{rel}:{se.lineno}: {se.msg}"
+                        break
+                    except Exception as ex:
+                        rel = os.path.relpath(fpath, svc_path)
+                        syntax_error = f"{rel}: impossibile leggere ({ex})"
+                        break
+                if syntax_error:
+                    break
+            if syntax_error:
+                errors.append(f"'{svc_name}': errore di sintassi nel plugin → {syntax_error}")
+                continue
 
             # Validate __init__.py has required declarations
             try:
@@ -1275,9 +1357,21 @@ def upload_service_zip(request: HttpRequest) -> JsonResponse:
             shutil.copytree(svc_path, dest_path)
             installed_services.append(svc_name)
 
+            # Note: the GUI dropdown lists services that have a matching
+            # static stub in GUI/searchapp/api/<svc_name>.py. Uploaded
+            # plugins are expected to ship their own stub — we do not
+            # auto-generate one (explicit is better than implicit).
+
         # Reload the service registries
         if installed_services:
             try:
+                # Drop cached VibraVid.services.<name> modules for newly-installed services
+                # so subsequent imports pick up the freshly-extracted files.
+                for svc in installed_services:
+                    prefix = f"VibraVid.services.{svc}"
+                    for mod_name in [m for m in sys.modules if m == prefix or m.startswith(prefix + ".")]:
+                        del sys.modules[mod_name]
+
                 # Reload CLI service loader
                 from VibraVid.services._base import site_loader
                 importlib.reload(site_loader)
@@ -1285,18 +1379,37 @@ def upload_service_zip(request: HttpRequest) -> JsonResponse:
                 errors.append(f"Reload CLI services: {e}")
 
             try:
-                # Reload GUI API registry
+                # Drop any GUI API modules from sys.modules so previously-failed imports
+                # (e.g. primevideo with a missing service backend) are retried fresh.
+                for mod_name in [m for m in sys.modules if m.startswith("GUI.searchapp.api.") and not m.endswith(".base")]:
+                    del sys.modules[mod_name]
+
+                # Reload GUI API registry. Do NOT pre-clear _API_REGISTRY here:
+                # _initialize_registry() now updates atomically and refuses to
+                # shrink the registry if a reload encounters errors, which
+                # protects existing services from being lost on a partial reload.
                 from GUI.searchapp import api as gui_api_module
                 gui_api_module._INITIALIZED = False
-                gui_api_module._API_REGISTRY.clear()
                 gui_api_module._initialize_registry()
             except Exception as e:
                 errors.append(f"Reload GUI API registry: {e}")
+
+        # Report what the dropdown actually contains right now so the user can
+        # verify their upload landed and which services failed to load.
+        try:
+            from GUI.searchapp import api as gui_api_module
+            available_sites = sorted(gui_api_module.get_available_sites())
+            load_errors_list = gui_api_module.get_load_errors()
+        except Exception:
+            available_sites = []
+            load_errors_list = []
 
         result = {
             "success": len(installed_services) > 0,
             "installed": installed_services,
             "errors": errors,
+            "available_sites_now": available_sites,
+            "load_errors": load_errors_list,
             "message": f"Installati {len(installed_services)} servizi: {', '.join(installed_services)}" if installed_services else "Nessun servizio installato."
         }
         return JsonResponse(result, status=200 if installed_services else 400)
@@ -1859,6 +1972,52 @@ def arr_trigger_sync(request: HttpRequest) -> JsonResponse:
 
     except Exception as exc:
         return JsonResponse({"status": "error", "message": str(exc)}, status=500)
+
+
+@require_http_methods(["GET"])
+def registry_status(request: HttpRequest) -> JsonResponse:
+    """
+    Diagnostic endpoint: report what the GUI service registry currently knows.
+
+    Returns the list of loaded service IDs, any import errors from the last
+    initialization, the services that exist on disk under VibraVid/services/,
+    and which static GUI api stubs exist. Hit /api/registry-status/ in a browser
+    when the dropdown looks wrong to find out why.
+    """
+    from GUI.searchapp import api as gui_api_module
+
+    api_dir = os.path.dirname(gui_api_module.__file__)
+    static_stubs = sorted(
+        f[:-3] for f in os.listdir(api_dir)
+        if f.endswith(".py") and f not in ("base.py", "__init__.py")
+    )
+
+    services_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "VibraVid", "services")
+    services_on_disk = []
+    if os.path.isdir(services_dir):
+        for entry in sorted(os.listdir(services_dir)):
+            full = os.path.join(services_dir, entry)
+            if entry.startswith("_") or entry.startswith("."):
+                continue
+            if os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
+                services_on_disk.append(entry.lower())
+
+    loaded = sorted(gui_api_module.get_available_sites())
+    missing_from_dropdown = sorted(set(services_on_disk) - set(loaded))
+
+    return JsonResponse({
+        "loaded_in_dropdown": loaded,
+        "services_on_disk": services_on_disk,
+        "static_gui_stubs": static_stubs,
+        "missing_from_dropdown": missing_from_dropdown,
+        "load_errors": gui_api_module.get_load_errors(),
+        "db_dir": os.environ.get("DJANGO_DB_DIR", "<unset>"),
+        "hint": (
+            "Se 'loaded_in_dropdown' contiene solo mostraguarda ma "
+            "'services_on_disk' ne contiene di più, guarda 'load_errors' "
+            "per vedere perché gli altri non caricano."
+        ),
+    })
 
 
 @require_http_methods(["POST"])

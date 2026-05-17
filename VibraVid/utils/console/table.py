@@ -4,14 +4,15 @@ import logging
 from typing import Dict, List, Any
 
 from rich.console import Console
-from rich.table import Table
 from rich.prompt import Prompt
-from rich import box
+from rich.text import Text
 
 from .message import start_message
+from .shared_styles import create_styled_table, TableStyle
 
 
 logger = logging.getLogger(__name__)
+TABLE_STYLE = TableStyle.MODERN_ROUNDED
 
 
 class TVShowManager:
@@ -25,11 +26,12 @@ class TVShowManager:
         self.slice_end = 10
         self.step = self.slice_end
         self.column_info = []
+        self.table_style = TABLE_STYLE
 
     def add_column(self, column_info: Dict[str, Dict[str, str]]) -> None:
         """
         Add column information.
-    
+
         Parameters:
             - column_info (Dict[str, Dict[str, str]]): Dictionary containing column names, their colors, and justification.
         """
@@ -55,39 +57,43 @@ class TVShowManager:
         if not data_slice:
             logger.error("Nothing to display.")
             return 404
-            
+
         if not self.column_info:
             logger.error("Error: Column information not configured.")
             return 404
 
-        # Create table with specified style
-        table = Table(
-            box=box.ROUNDED,
-            show_header=True,
-            header_style="cyan",
-            border_style="blue",
-            padding=(0, 1)
-        )
+        table = create_styled_table(self.table_style)
 
         # Add columns dynamically based on provided column information
         for col_name, col_style in self.column_info.items():
             color = col_style.get("color", "white")
             width = col_style.get("width", None)
             justify = col_style.get("justify", "center")
-            
+            header_color = col_style.get("header_color", None)
+            if header_color:
+                col_name = Text(col_name, style=header_color)
+
             table.add_column(
                 col_name, 
                 style=color,
                 justify=justify,
-                width=width
+                width=width,
+                no_wrap=col_style.get("no_wrap", False),
+                overflow=col_style.get("overflow", "ellipsis"),
             )
 
         # Add rows dynamically based on available TV show data
         for idx, entry in enumerate(data_slice):
             if entry:
-                row_data = [str(entry.get(col_name, '')) for col_name in self.column_info.keys()]
-                style = "dim" if idx % 2 == 1 else None
-                table.add_row(*row_data, style=style)
+                row_data = []
+                for col_name in self.column_info.keys():
+                    value = str(entry.get(col_name, ''))
+                    max_len = self.column_info[col_name].get("max_length", None)
+                    if max_len and len(value) > max_len:
+                        value = value[:max_len-3] + "..."
+                    row_data.append(value)
+
+                table.add_row(*row_data)
 
         self.console.print(table)
 
@@ -98,14 +104,14 @@ class TVShowManager:
         Parameters:
             - force_int_input(bool): If True, only accept integer inputs from 0 to max_int_input
             - max_int_input (int): range of row to show
-        
+
         Returns:
             str: Last command executed before breaking out of the loop.
         """
         if not self.tv_shows:
             logger.error("Error: No data available for display.")
             return ""
-            
+
         if not self.column_info:
             logger.error("Error: Columns not configured.")
             return ""
@@ -115,68 +121,49 @@ class TVShowManager:
 
         while True:
             start_message()
-            
+
             # Check and adjust slice indices if out of bounds
             current_slice = self.tv_shows[self.slice_start:self.slice_end]
             if not current_slice and total_items > 0:
                 self.slice_start = 0
                 self.slice_end = min(self.step, total_items)
                 current_slice = self.tv_shows[self.slice_start:self.slice_end]
-            
+
             result_func = self.display_data(current_slice)
             if result_func == 404:
                 logger.error("Error displaying data. Exiting.")
                 return ""
 
-            # Handle pagination and user input
-            if self.slice_end < total_items:
-                self.console.print("\n[green]Press [red]Enter [green]for next page, [red]'q' [green]to quit.")
+            # Add page info below the table
+            page_info = f"[dim][{self.slice_start+1}-{min(self.slice_end, total_items)} of {total_items}][/dim]"
+            self.console.print(page_info, justify="center")
 
-                if not force_int_input:
-                    prompt_msg = ("\n[cyan]Insert media index [yellow](e.g., 1), [red]* [cyan]to download all media, [yellow](e.g., 1-2) [cyan]for a range of media, or [yellow](e.g., 3-*) [cyan]to download from a specific index to the end")
-                    key = Prompt.ask(prompt_msg)
+            # Pagination prompt
+            self.console.print("[green]Press [red]Enter [green]for next page, [red]'q' [green]to quit.")
 
-                else:
-                    # Include empty string in choices to allow pagination with Enter key
-                    choices = [""] + [str(i) for i in range(max_int_input + 1)] + ["q", "quit"]
-                    prompt_msg = "[cyan]Insert media [red]index"
-                    key = Prompt.ask(prompt_msg, choices=choices, show_choices=False)
+            if not force_int_input:
+                prompt_msg = ("\n[cyan]Insert media index [yellow](e.g., 1), [red]* [cyan]to download all media, [yellow](e.g., 1-2) [cyan]for a range of media, or [yellow](e.g., 3-*) [cyan]to download from a specific index to the end")
+                key = Prompt.ask(prompt_msg)
+            else:
+                choices = [""] + [str(i) for i in range(max_int_input + 1)] + ["q", "quit"]
+                prompt_msg = "[cyan]Insert media [red]index"
+                key = Prompt.ask(prompt_msg, choices=choices, show_choices=False)
 
-                last_command = key
+            last_command = key
 
-                if key.lower() in ["q", "quit"]:
-                    break
-                elif key == "":
+            if key.lower() in ["q", "quit"]:
+                break
+            elif key == "":
+                if self.slice_end < total_items:
                     self.slice_start += self.step
                     self.slice_end += self.step
                     if self.slice_end > total_items:
                         self.slice_end = total_items
                 else:
-                    break
-
-            else:
-                # Last page handling
-                self.console.print("\n[green]You've reached the end. [red]Enter [green]for first page, [red]'q' [green]to quit.")
-                
-                if not force_int_input:
-                    prompt_msg = ("\n[cyan]Insert media index [yellow](e.g., 1), [red]* [cyan]to download all media, [yellow](e.g., 1-2) [cyan]for a range of media, or [yellow](e.g., 3-*) [cyan]to download from a specific index to the end")
-                    key = Prompt.ask(prompt_msg)
-                else:
-                    # Include empty string in choices to allow pagination with Enter key
-                    choices = [""] + [str(i) for i in range(max_int_input + 1)] + ["q", "quit"]
-                    prompt_msg = "[cyan]Insert media [red]index"
-                    key = Prompt.ask(prompt_msg, choices=choices, show_choices=False)
-
-                last_command = key
-
-                if key.lower() in ["q", "quit"]:
-                    break
-
-                elif key == "":
                     self.slice_start = 0
                     self.slice_end = self.step
-                else:
-                    break
+            else:
+                break
 
         return last_command
 
