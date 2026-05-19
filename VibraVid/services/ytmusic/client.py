@@ -24,7 +24,20 @@ logger = logging.getLogger(__name__)
 
 def _ytdlp_cmd() -> List[str]:
     """Return the yt-dlp command that works in any OS/venv."""
-    return [sys.executable, "-m", "yt_dlp"]
+    cmd = [sys.executable, "-m", "yt_dlp"]
+    try:
+        import pathlib
+        project_root = pathlib.Path(__file__).resolve().parents[4]
+        conf_cookies = project_root / "Conf" / "cookies.txt"
+        root_cookies = project_root / "cookies.txt"
+        
+        if conf_cookies.exists():
+            cmd.extend(["--cookies", str(conf_cookies)])
+        elif root_cookies.exists():
+            cmd.extend(["--cookies", str(root_cookies)])
+    except Exception:
+        pass
+    return cmd
 
 
 def _ffmpeg_location() -> Optional[str]:
