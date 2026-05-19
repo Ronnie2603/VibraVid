@@ -23,21 +23,12 @@ logger = logging.getLogger(__name__)
 # the copy installed in the active virtual-environment.
 
 def _ytdlp_cmd() -> List[str]:
-    """Return the yt-dlp command that works in any OS/venv."""
-    cmd = [sys.executable, "-m", "yt_dlp"]
-    try:
-        import pathlib
-        project_root = pathlib.Path(__file__).resolve().parents[3]
-        conf_cookies = project_root / "Conf" / "cookies.txt"
-        root_cookies = project_root / "cookies.txt"
-        
-        if conf_cookies.exists():
-            cmd.extend(["--cookies", str(conf_cookies)])
-        elif root_cookies.exists():
-            cmd.extend(["--cookies", str(root_cookies)])
-    except Exception:
-        pass
-    return cmd
+    """Return the yt-dlp command that works in any OS/venv.
+    PO token injection is handled automatically by the bgutil-ytdlp-pot-provider
+    plugin, which reads BGUTIL_HTTP_API_ENDPOINT from the environment.
+    Cookies are not needed for public YouTube Music content.
+    """
+    return [sys.executable, "-m", "yt_dlp"]
 
 
 def _ffmpeg_location() -> Optional[str]:

@@ -13,3 +13,4 @@ ytmusicapi
 django
 yt-dlp
 imageio-ffmpeg
+bgutil-ytdlp-pot-provider
