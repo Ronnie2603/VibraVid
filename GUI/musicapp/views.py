@@ -47,16 +47,9 @@ _music_lock = threading.Lock()
 
 
 def _music_output_dir() -> str:
-    """Return the configured Music output directory."""
+    """Return the configured Music output directory (same root as Video/Serie/Movie)."""
     try:
-        cfg = config_manager.get_config()
-        root = cfg.get("OUTPUT", {}).get("root_path", "Video")
-        music_folder = cfg.get("OUTPUT", {}).get("music_folder_name", "Music")
-        if not os.path.isabs(root):
-            import pathlib
-            project_root = pathlib.Path(__file__).resolve().parents[3]
-            root = str(project_root / root)
-        return os.path.join(root, music_folder)
+        return site_constants.MUSIC_FOLDER
     except Exception:
         return os.path.join(os.path.expanduser("~"), "Music", "VibraVid")
 

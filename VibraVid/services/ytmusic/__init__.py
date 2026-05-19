@@ -15,7 +15,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich import box
 
-from VibraVid.utils import config_manager
+from VibraVid.services._base.site_costant import site_constants
 
 from VibraVid.services.ytmusic.client import (
     MusicTrack,
@@ -59,15 +59,9 @@ def _sanitize(name: str, fallback: str = "Unknown") -> str:
 
 
 def _music_output_dir() -> str:
+    """Return the configured Music output directory (same root as Video/Serie/Movie)."""
     try:
-        cfg = config_manager.get_config()
-        root = cfg.get("OUTPUT", {}).get("root_path", "Video")
-        music_folder = cfg.get("OUTPUT", {}).get("music_folder_name", "Music")
-        if not os.path.isabs(root):
-            import pathlib
-            project_root = pathlib.Path(__file__).resolve().parents[4]
-            root = str(project_root / root)
-        return os.path.join(root, music_folder)
+        return site_constants.MUSIC_FOLDER
     except Exception:
         return os.path.join(os.path.expanduser("~"), "Music", "VibraVid")
 

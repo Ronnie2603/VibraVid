@@ -83,10 +83,10 @@ class SiteConstant:
     @property
     def MUSIC_FOLDER(self):
         base_path = self.ROOT_PATH
-        music_folder = config_manager.config.get('OUTPUT', 'music_folder_name')
+        music_folder = config_manager.config.get('OUTPUT', 'music_folder_name', default='Music')
         if '%{site_name}' in music_folder:
             music_folder = music_folder.replace('%{site_name}', self.SITE_NAME)
-        
+
         return os.path.join(base_path, music_folder)
 
 site_constants = SiteConstant()
