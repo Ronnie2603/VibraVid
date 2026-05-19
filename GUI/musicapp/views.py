@@ -19,7 +19,7 @@ from django.contrib import messages
 
 from VibraVid.utils import config_manager
 from VibraVid.services._base.site_costant import site_constants
-from GUI.musicapp.models import DownloadedTrack
+from .models import DownloadedTrack
 from VibraVid.services.ytmusic.client import (
     MusicTrack,
     MusicPlaylist,
