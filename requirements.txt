@@ -9,3 +9,7 @@ pywidevine
 pyplayready
 pycryptodomex
 mutagen
+ytmusicapi
+django
+yt-dlp
+imageio-ffmpeg

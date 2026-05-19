@@ -1,0 +1,90 @@
+{% extends "musicapp/base.html" %}
+{% block title %}{{ subtitle|default:"Risultati" }}{% endblock %}
+
+{% block content %}
+<div class="py-8 animate-fade-in">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-2xl font-bold text-white">{{ subtitle }}</h1>
+            <p class="text-gray-500 text-sm mt-1">
+                {% if results %}{{ results|length }} risultati{% endif %}
+                {% if playlist %}{{ playlist.track_count|default:playlist.tracks|length }} brani{% endif %}
+            </p>
+        </div>
+        <a href="{% url 'music_home' %}" class="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Nuova ricerca
+        </a>
+    </div>
+
+    <!-- TRACK RESULTS -->
+    {% if mode == "track_results" %}
+    <div class="space-y-3" id="track-results">
+        {% for track in results %}
+        <div class="bg-white/5 border border-white/10 hover:border-purple-500/40 hover:bg-white/8 rounded-2xl p-4 flex items-center gap-4 transition-all">
+            <!-- Thumbnail -->
+            <div class="flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden bg-purple-900/30">
+                {% if track.thumbnail %}
+                <img src="{{ track.thumbnail }}" alt="{{ track.title }}" class="w-full h-full object-cover"/>
+                {% else %}
+                <div class="w-full h-full flex items-center justify-center">
+                    <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+                <div class="font-semibold text-white truncate">{{ track.title }}</div>
+                <div class="text-sm truncate mt-0.5">
+                    {% for artist in track.artists %}
+                        {% if artist.channel_id %}
+                            <a href="{% url 'music_artist_detail' artist.channel_id %}"
+                               class="text-purple-400 hover:text-purple-300 transition-colors hover:underline">{{ artist.name }}</a>
+                        {% else %}
+                            <span class="text-purple-300">{{ artist.name }}</span>
+                        {% endif %}
+                        {% if not forloop.last %}<span class="text-gray-600">, </span>{% endif %}
+                    {% endfor %}
+                </div>
+                <div class="flex items-center gap-3 mt-0.5">
+                    {% if track.album %}<span class="text-xs text-gray-500 truncate">{{ track.album }}</span>{% endif %}
+                    {% if track.year %}<span class="text-xs text-gray-600">{{ track.year }}</span>{% endif %}
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex-shrink-0">
+                <a href="{% url 'music_track_detail' %}?video_id={{ track.video_id }}&title={{ track.title|urlencode }}&artist={{ track.artist_str|urlencode }}&thumbnail={{ track.thumbnail|urlencode }}"
+                   class="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Scarica
+                </a>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-16 text-gray-500">
+            <svg class="w-16 h-16 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            Nessun risultato trovato.
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- YTMUSIC/SPOTIFY PLAYLIST -->
+    {% if mode == "ytmusic_playlist" or mode == "spotify_playlist" %}
+    {% include "musicapp/_playlist_tracks.html" with playlist=playlist %}
+    {% endif %}
+
+</div>
+{% endblock %}

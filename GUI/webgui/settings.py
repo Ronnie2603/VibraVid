@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "searchapp.apps.SearchappConfig",
+    "musicapp.apps.MusicappConfig",
 ]
 
 MIDDLEWARE = [
@@ -177,6 +178,17 @@ LOGGING = {
         "ARR": {
             "handlers": ["console", "arr_file"],
             "level": "INFO",
+            "propagate": False,
+        },
+        "musicapp": {
+            "handlers": ["console"],
+            "level": os.environ.get("DJANGO_LOG_LEVEL", "WARNING"),
+            "propagate": False,
+        },
+        # ── Debug logger for Spotify/YT Music client ──────────────────────────
+        "VibraVid.services.ytmusic": {
+            "handlers": ["console"],
+            "level": "DEBUG",          # always verbose so we can see what's happening
             "propagate": False,
         },
     },

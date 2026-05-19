@@ -1,0 +1,81 @@
+{% extends "musicapp/base.html" %}
+{% block title %}Ricerca Musica{% endblock %}
+{% block meta_description %}Cerca canzoni su YouTube Music, incolla link Spotify o YouTube e scarica in alta qualità{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-[90vh] animate-fade-in">
+
+    <!-- Hero -->
+    <div class="text-center mb-12 mt-8">
+        <div class="inline-flex items-center gap-2 bg-purple-900/30 border border-purple-500/30 rounded-full px-4 py-1.5 mb-6">
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+            </svg>
+            <span class="text-sm text-purple-300 font-medium">YouTube Music · Spotify</span>
+        </div>
+        <h1 class="text-5xl lg:text-6xl font-black tracking-tight mb-4">
+            Trova la tua <span class="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">musica</span>
+        </h1>
+        <p class="text-gray-400 text-lg max-w-xl mx-auto">
+            Cerca per titolo, artista, oppure incolla un link da Spotify o YouTube.
+        </p>
+    </div>
+
+    <!-- Search Form -->
+    <form method="post" action="{% url 'music_search' %}" class="w-full max-w-2xl" id="music-search-form">
+        {% csrf_token %}
+        <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+            </div>
+            <input
+                id="music-query-input"
+                type="text"
+                name="query"
+                placeholder="Cerca canzone, artista, o incolla link Spotify/YouTube..."
+                class="w-full pl-12 pr-36 py-5 rounded-2xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-base focus:outline-none focus:border-purple-500/60 focus:bg-white/8 transition-all"
+                autofocus
+                autocomplete="off"
+            />
+            <button
+                type="submit"
+                id="music-search-btn"
+                class="absolute right-2 top-2 bottom-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white font-semibold px-6 rounded-xl text-sm transition-colors"
+            >
+                Cerca
+            </button>
+        </div>
+    </form>
+
+    <script>
+    document.getElementById('music-search-form').addEventListener('submit', function () {
+        const btn = document.getElementById('music-search-btn');
+        const input = document.getElementById('music-query-input');
+        if (!input.value.trim()) return;
+        btn.disabled = true;
+        btn.innerHTML = `<svg class="w-4 h-4 animate-spin inline-block mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Ricerca…`;
+    });
+    </script>
+
+    <!-- Tips -->
+    <div class="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+            <div class="text-2xl mb-2">🎵</div>
+            <div class="text-xs text-gray-300 font-medium">Ricerca testuale</div>
+            <div class="text-xs text-gray-500 mt-1">es. "Kendrick Lamar HUMBLE"</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+            <div class="text-2xl mb-2">🟢</div>
+            <div class="text-xs text-gray-300 font-medium">Link Spotify</div>
+            <div class="text-xs text-gray-500 mt-1">Traccia o intera playlist</div>
+        </div>
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
+            <div class="text-2xl mb-2">▶️</div>
+            <div class="text-xs text-gray-300 font-medium">Link YouTube</div>
+            <div class="text-xs text-gray-500 mt-1">YouTube o YouTube Music</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
