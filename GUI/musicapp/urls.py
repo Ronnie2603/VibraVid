@@ -12,8 +12,10 @@ urlpatterns = [
     path("album/", views.album_detail, name="music_album_detail"),
     path("playlist/", views.playlist_detail, name="music_playlist_detail"),
     path("downloads/", views.music_downloads, name="music_downloads"),
+    path("library/", views.music_library, name="music_library"),
 
     # JSON APIs
+    path("api/sync-library/", views.sync_library, name="music_sync_library"),
     path("api/start-download/", views.start_music_download, name="music_start_download"),
     path("api/downloads/", views.get_music_downloads_json, name="music_downloads_json"),
     path("api/track-formats/", views.get_track_formats_json, name="music_track_formats"),

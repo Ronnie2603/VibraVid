@@ -1,0 +1,99 @@
+{% extends "musicapp/base.html" %}
+{% block title %}Libreria Musicale{% endblock %}
+
+{% block content %}
+<div class="py-8 animate-fade-in">
+
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Libreria Musicale</h1>
+            <p class="text-gray-500 text-sm mt-1">{{ tracks.count }} tracce sincronizzate</p>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="sync-btn" onclick="syncLibrary()" class="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Sincronizza Disco
+            </button>
+            <a href="{% url 'music_home' %}" class="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Nuova ricerca
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-black/20 text-xs uppercase tracking-wider text-gray-400 border-b border-white/10">
+                        <th class="px-6 py-4 font-medium">Titolo</th>
+                        <th class="px-6 py-4 font-medium">Artista</th>
+                        <th class="px-6 py-4 font-medium">Album</th>
+                        <th class="px-6 py-4 font-medium text-right">Data Download</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5">
+                    {% for track in tracks %}
+                    <tr class="hover:bg-white/5 transition-colors group">
+                        <td class="px-6 py-3 whitespace-nowrap">
+                            <div class="font-medium text-white truncate max-w-[200px]" title="{{ track.title }}">{{ track.title }}</div>
+                            <div class="text-[10px] text-gray-500 truncate max-w-[200px]" title="{{ track.file_path }}">{{ track.file_path }}</div>
+                        </td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-300">{{ track.artist }}</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-400">{{ track.album|default:"-" }}</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500 text-right">{{ track.downloaded_at|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-12 text-center text-gray-500">
+                            <svg class="w-12 h-12 mx-auto mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                            La libreria è vuota. Clicca su "Sincronizza Disco" per cercare file locali.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function syncLibrary() {
+    const btn = document.getElementById('sync-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Sincronizzazione...`;
+    btn.disabled = true;
+    btn.classList.add('opacity-75', 'cursor-not-allowed');
+
+    fetch("{% url 'music_sync_library' %}", {
+        method: "POST",
+        headers: {
+            "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]')?.value || ""
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === "ok") {
+            window.location.reload();
+        } else {
+            alert("Errore durante la sincronizzazione: " + data.message);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+    })
+    .catch(e => {
+        alert("Errore di rete: " + e);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+    });
+}
+</script>
+{% endblock %}

@@ -19,6 +19,7 @@ from django.contrib import messages
 
 from VibraVid.utils import config_manager
 from VibraVid.services._base.site_costant import site_constants
+from GUI.musicapp.models import DownloadedTrack
 from VibraVid.services.ytmusic.client import (
     MusicTrack,
     MusicPlaylist,
@@ -88,25 +89,148 @@ def _get_music_downloads() -> List[Dict[str, Any]]:
         return sorted(_music_downloads.values(), key=lambda x: x.get("started_at", 0))
 
 
-def _enqueue_download(video_id: str, title: str, artist: str, format_id: str, url: str = "") -> str:
+def _enqueue_download(video_id: str, title: str, artist: str, format_id: str, url: str = "", playlist_name: str = "") -> str:
     """Submit one track download to the executor. Returns the download ID."""
     dl_id = f"music_{int(time.time() * 1000)}_{hash(video_id) % 100000}"
     track_url = url or f"https://music.youtube.com/watch?v={video_id}"
     output_dir = _music_output_dir()
+    
+    # Pre-check database for duplicates (instant skip)
+    if video_id and DownloadedTrack.objects.filter(video_id=video_id).exists():
+        _add_music_download(dl_id, title, artist, track_url, format_id)
+        _update_music_download(dl_id, "completed")
+        _handle_playlist_symlink(output_dir, playlist_name, DownloadedTrack.objects.filter(video_id=video_id).first().file_path)
+        return dl_id
+        
+    if DownloadedTrack.objects.filter(artist__iexact=artist, title__iexact=title).exists():
+        _add_music_download(dl_id, title, artist, track_url, format_id)
+        _update_music_download(dl_id, "completed")
+        _handle_playlist_symlink(output_dir, playlist_name, DownloadedTrack.objects.filter(artist__iexact=artist, title__iexact=title).first().file_path)
+        return dl_id
 
     _add_music_download(dl_id, title, artist, track_url, format_id)
 
-    def _task(dl_id=dl_id, track_url=track_url, output_dir=output_dir, format_id=format_id):
+    def _task(dl_id=dl_id, track_url=track_url, output_dir=output_dir, format_id=format_id, video_id=video_id, title=title, artist=artist, playlist_name=playlist_name):
         try:
             _update_music_download(dl_id, "downloading")
             success = download_track(track_url, output_dir, format_id)
-            _update_music_download(dl_id, "completed" if success else "failed")
+            if success:
+                _update_music_download(dl_id, "completed")
+                # Find the downloaded file to save in DB and create symlink
+                final_file = _find_downloaded_file(output_dir, artist, title)
+                if final_file:
+                    rel_path = os.path.relpath(final_file, output_dir)
+                    # Extract album from path if possible (Artist/Album/File)
+                    parts = rel_path.split(os.sep)
+                    album = parts[1] if len(parts) >= 3 else ""
+                    DownloadedTrack.objects.update_or_create(
+                        file_path=rel_path,
+                        defaults={
+                            "video_id": video_id,
+                            "title": title,
+                            "artist": artist,
+                            "album": album
+                        }
+                    )
+                    _handle_playlist_symlink(output_dir, playlist_name, rel_path)
+            else:
+                _update_music_download(dl_id, "failed")
         except Exception as e:
             _update_music_download(dl_id, "failed", error=str(e))
 
     _music_executor.submit(_task)
     return dl_id
 
+
+def _find_downloaded_file(base_dir: str, artist: str, title: str) -> Optional[str]:
+    artist_lower = artist.lower()
+    title_lower = title.lower()
+    for root, dirs, files in os.walk(base_dir):
+        if "Playlists" in root:
+            continue
+        for f in files:
+            f_lower = f.lower()
+            if title_lower in f_lower and (artist_lower in f_lower or artist_lower in root.lower()):
+                return os.path.join(root, f)
+    return None
+
+
+def _handle_playlist_symlink(output_dir: str, playlist_name: str, rel_path: str):
+    if not playlist_name or not rel_path:
+        return
+        
+    playlist_dir = os.path.join(output_dir, "Playlists", "".join(c for c in playlist_name if c.isalnum() or c in " -_").strip())
+    os.makedirs(playlist_dir, exist_ok=True)
+    
+    target_file = os.path.join(output_dir, rel_path)
+    link_name = os.path.basename(rel_path)
+    link_path = os.path.join(playlist_dir, link_name)
+    
+    if os.path.exists(link_path):
+        return
+        
+    try:
+        os.symlink(target_file, link_path)
+    except OSError:
+        try:
+            os.link(target_file, link_path) # Fallback to hardlink
+        except OSError:
+            # Fallback to m3u playlist entry if links fail
+            m3u_path = os.path.join(playlist_dir, f"{playlist_name}.m3u")
+            with open(m3u_path, "a", encoding="utf-8") as f:
+                f.write(f"../../{rel_path}\n")
+
+# ─── Library & Sync ─────────────────────────────────────────────────────────────
+
+@require_http_methods(["GET"])
+def music_library(request: HttpRequest) -> HttpResponse:
+    tracks = DownloadedTrack.objects.all().order_by("-downloaded_at")
+    return render(request, "musicapp/library.html", {"tracks": tracks})
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def sync_library(request: HttpRequest) -> JsonResponse:
+    output_dir = _music_output_dir()
+    added = 0
+    valid_exts = {".opus", ".m4a", ".mp3", ".webm"}
+    
+    try:
+        for root, dirs, files in os.walk(output_dir):
+            if "Playlists" in root:
+                continue
+            for f in files:
+                if any(f.endswith(ext) for ext in valid_exts):
+                    rel_path = os.path.relpath(os.path.join(root, f), output_dir)
+                    parts = rel_path.split(os.sep)
+                    
+                    if len(parts) >= 3:
+                        artist = parts[0]
+                        album = parts[1]
+                        filename = parts[-1]
+                        title = os.path.splitext(filename)[0].replace(f"{artist} - ", "", 1)
+                    else:
+                        artist = "Unknown"
+                        album = ""
+                        title = os.path.splitext(f)[0]
+                        
+                    _, created = DownloadedTrack.objects.update_or_create(
+                        file_path=rel_path,
+                        defaults={
+                            "title": title,
+                            "artist": artist,
+                            "album": album
+                        }
+                    )
+                    if created:
+                        added += 1
+                        
+        return JsonResponse({"status": "ok", "added": added})
+    except Exception as e:
+        logger.exception("[musicapp] sync_library error")
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+# ─── API ──────────────────────────────────────────────────────────────────────
 
 # ─── Home ─────────────────────────────────────────────────────────────────────
 
@@ -349,6 +473,7 @@ def start_music_download(request: HttpRequest) -> JsonResponse:
         else:
             body = request.POST.dict()
 
+        playlist_name = body.get("playlist_name", "")
         tracks_raw = body.get("tracks")
         if not tracks_raw:
             video_id = body.get("video_id", "")
@@ -370,6 +495,7 @@ def start_music_download(request: HttpRequest) -> JsonResponse:
                 artist=t.get("artist", ""),
                 format_id=t.get("format_id", "bestaudio"),
                 url=t.get("url", ""),
+                playlist_name=playlist_name,
             )
             started.append(dl_id)
 

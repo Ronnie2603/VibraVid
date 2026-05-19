@@ -485,7 +485,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json',
                            'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '' },
-                body: JSON.stringify({ tracks }),
+                body: JSON.stringify({ tracks, playlist_name: "{{ playlist.title|escapejs }}" }),
             });
             const data = await resp.json();
             if (data.status === 'ok') {

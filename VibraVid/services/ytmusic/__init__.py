@@ -180,7 +180,8 @@ def _download_track_cli(track: MusicTrack, format_id: str) -> bool:
     out_dir = _track_output_dir(track)
     console.print(f"  [dim]→[/] [white]{track.title}[/] [dim]by[/] [green]{track.artist_str}[/] [dim]→ {out_dir}[/]")
     try:
-        return download_track(track.yt_url, out_dir, format_id)
+        ok, _ = download_track(track.yt_url, out_dir, format_id)
+        return ok
     except Exception as e:
         logger.error(f"[ytmusic] Download exception for {track.title}: {e}")
         return False

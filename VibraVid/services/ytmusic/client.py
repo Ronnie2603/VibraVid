@@ -1470,7 +1470,7 @@ def download_track(video_id_or_url: str, output_dir: str, format_id: str = "best
         url = f"https://music.youtube.com/watch?v={video_id_or_url}"
 
     os.makedirs(output_dir, exist_ok=True)
-    output_template = os.path.join(output_dir, "%(artist)s - %(title)s.%(ext)s")
+    output_template = os.path.join(output_dir, "%(artist)s", "%(album|Singles)s", "%(artist)s - %(title)s.%(ext)s")
 
     ffmpeg = _ffmpeg_location()
 
@@ -1479,6 +1479,18 @@ def download_track(video_id_or_url: str, output_dir: str, format_id: str = "best
         "-f", format_id,
         "-o", output_template,
     ]
+
+    try:
+        from VibraVid.services._base.site_costant import site_constants
+        archive_path = os.path.join(site_constants.MUSIC_FOLDER, ".ytmusic_archive.txt")
+        if not os.path.isabs(archive_path):
+            import pathlib
+            project_root = pathlib.Path(__file__).resolve().parents[4]
+            archive_path = str(project_root / archive_path)
+    except Exception:
+        archive_path = os.path.join(output_dir, ".ytmusic_archive.txt")
+
+    cmd.extend(["--download-archive", archive_path, "--no-overwrites"])
 
     if ffmpeg:
         cmd += [
