@@ -64,7 +64,7 @@ def _music_output_dir() -> str:
         folder = site_constants.MUSIC_FOLDER
         if not os.path.isabs(folder):
             import pathlib
-            project_root = pathlib.Path(__file__).resolve().parents[4]
+            project_root = pathlib.Path(__file__).resolve().parents[3]
             folder = str(project_root / folder)
         return folder
     except Exception as e:

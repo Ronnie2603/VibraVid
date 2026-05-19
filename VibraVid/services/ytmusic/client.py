@@ -27,7 +27,7 @@ def _ytdlp_cmd() -> List[str]:
     cmd = [sys.executable, "-m", "yt_dlp"]
     try:
         import pathlib
-        project_root = pathlib.Path(__file__).resolve().parents[4]
+        project_root = pathlib.Path(__file__).resolve().parents[3]
         conf_cookies = project_root / "Conf" / "cookies.txt"
         root_cookies = project_root / "cookies.txt"
         
@@ -1498,7 +1498,7 @@ def download_track(video_id_or_url: str, output_dir: str, format_id: str = "best
         archive_path = os.path.join(site_constants.MUSIC_FOLDER, ".ytmusic_archive.txt")
         if not os.path.isabs(archive_path):
             import pathlib
-            project_root = pathlib.Path(__file__).resolve().parents[4]
+            project_root = pathlib.Path(__file__).resolve().parents[3]
             archive_path = str(project_root / archive_path)
     except Exception:
         archive_path = os.path.join(output_dir, ".ytmusic_archive.txt")
