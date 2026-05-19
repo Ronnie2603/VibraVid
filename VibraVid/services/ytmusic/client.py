@@ -288,6 +288,115 @@ def search_tracks(query: str, limit: int = 10) -> List[MusicTrack]:
     return _search_ytdlp_fallback(query, limit)
 
 
+def search_artists(query: str, limit: int = 10) -> List["MusicArtist"]:
+    """Search YouTube Music for artists by name. Requires ytmusicapi."""
+    if not _ytmusicapi_available():
+        logger.warning("[ytmusic] ytmusicapi not available — cannot search artists")
+        return []
+    try:
+        from ytmusicapi import YTMusic
+        yt = YTMusic()
+        results = yt.search(query, filter="artists", limit=limit)
+        artists: List[MusicArtist] = []
+        for r in results[:limit]:
+            name = r.get("artist") or r.get("title") or "Unknown"
+            channel_id = r.get("browseId") or r.get("artistId") or ""
+            artists.append(MusicArtist(name=name, channel_id=channel_id))
+        return artists
+    except Exception as e:
+        logger.warning(f"[ytmusic] search_artists failed: {e}")
+        return []
+
+
+def search_albums(query: str, limit: int = 10) -> List["MusicAlbum"]:
+    """Search YouTube Music for albums by title/artist. Requires ytmusicapi."""
+    if not _ytmusicapi_available():
+        logger.warning("[ytmusic] ytmusicapi not available — cannot search albums")
+        return []
+    try:
+        from ytmusicapi import YTMusic
+        yt = YTMusic()
+        results = yt.search(query, filter="albums", limit=limit)
+        albums: List[MusicAlbum] = []
+        for r in results[:limit]:
+            browse_id = r.get("browseId") or ""
+            title = r.get("title") or "Unknown"
+            raw_artists = r.get("artists") or []
+            al_artists = _parse_artists(raw_artists)
+            year = r.get("year")
+            thumbs = r.get("thumbnails") or []
+            thumb = thumbs[-1].get("url") if thumbs else None
+            al_type = r.get("type") or "Album"
+            albums.append(MusicAlbum(
+                browse_id=browse_id,
+                title=title,
+                artists=al_artists,
+                year=year,
+                thumbnail=thumb,
+                album_type=al_type,
+            ))
+        return albums
+    except Exception as e:
+        logger.warning(f"[ytmusic] search_albums failed: {e}")
+        return []
+
+
+def get_album_tracks(browse_id: str) -> Optional["MusicPlaylist"]:
+    """
+    Fetch full album details and return its tracks as a MusicPlaylist.
+    browse_id is the ytmusicapi browseId for the album.
+    Requires ytmusicapi.
+    """
+    if not _ytmusicapi_available():
+        logger.warning("[ytmusic] ytmusicapi not available — cannot fetch album tracks")
+        return None
+    try:
+        from ytmusicapi import YTMusic
+        yt = YTMusic()
+        data = yt.get_album(browse_id)
+
+        title = data.get("title") or "Album"
+        thumbs = data.get("thumbnails") or []
+        thumbnail = thumbs[-1].get("url") if thumbs else None
+        description = data.get("description")
+        raw_artists = data.get("artists") or []
+        al_artists = _parse_artists(raw_artists)
+        year = data.get("year")
+
+        tracks: List[MusicTrack] = []
+        for r in (data.get("tracks") or []):
+            video_id = r.get("videoId") or ""
+            if not video_id:
+                continue
+            t_title = r.get("title") or "Unknown"
+            t_artists = _parse_artists(r.get("artists") or []) or al_artists
+            duration_seconds = r.get("duration_seconds")
+            t_thumbs = r.get("thumbnails") or thumbs
+            t_thumb = t_thumbs[-1].get("url") if t_thumbs else thumbnail
+            tracks.append(MusicTrack(
+                video_id=video_id,
+                title=t_title,
+                artists=t_artists,
+                album=title,
+                thumbnail=t_thumb,
+                duration_seconds=duration_seconds,
+                year=year,
+            ))
+
+        return MusicPlaylist(
+            playlist_id=browse_id,
+            title=title,
+            description=description,
+            thumbnail=thumbnail,
+            track_count=len(tracks),
+            tracks=tracks,
+            source="ytmusic",
+        )
+    except Exception as e:
+        logger.error(f"[ytmusic] get_album_tracks failed for {browse_id}: {e}", exc_info=True)
+        return None
+
+
 # ─── Artist details ───────────────────────────────────────────────────────────
 
 @dataclass

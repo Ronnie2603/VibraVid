@@ -27,6 +27,7 @@ _⚡ **Quick Start:** `pip install VibraVid && VibraVid`_
 - [Usage Examples](#usage-examples)
 - [Global Search](#global-search)
 - [Advanced Features](#advanced-features)
+- [YouTube Music](#youtube-music)
 - [ARR Integration](#arr-integration)
 - [Docker](#docker)
 - [Gui](./.github/docs/en/gui.md)
@@ -864,6 +865,152 @@ python update.py -y --dry-run
 ```
 
 The following are **always preserved** during an update: folders `Video`, `Conf`, `.git` and file `update.py`.
+
+---
+
+---
+
+## YouTube Music
+
+VibraVid includes a fully-featured **YouTube Music** integration for searching and downloading audio tracks, albums, artists and playlists — available both from the **CLI** and the **web GUI**.
+
+The integration uses [ytmusicapi](https://github.com/sigma67/ytmusicapi) as the primary backend and falls back to `yt-dlp` when the API is unavailable. Downloaded files are saved with a **Lidarr-style folder structure**.
+
+### Output Folder Structure
+
+All music downloads are placed under the configured music root and organized in the following hierarchy:
+
+```text
+<root_path>/<music_folder_name>/<Artist>/<Album>/Artist - Title.ext
+<root_path>/<music_folder_name>/<Artist>/Singles/Artist - Title.ext   ← when no album is available
+```
+
+The default values resolve to:
+
+```text
+Video/Music/Eminem/The Marshall Mathers LP/Eminem - Stan.opus
+Video/Music/Eminem/Singles/Eminem - Lose Yourself.opus
+```
+
+Configure the root and music folder in `config.json`:
+
+```json
+{
+  "OUTPUT": {
+    "root_path": "Video",
+    "music_folder_name": "Music"
+  }
+}
+```
+
+---
+
+### CLI Usage
+
+Force the music service with `--music` to skip all video/streaming site selection:
+
+```bash
+# Interactive search
+python manual.py --music -s "Eminem"
+
+# Auto-download the first result
+python manual.py --music -s "In The End Linkin Park" --auto-first
+
+# Force a specific audio format (yt-dlp format ID or bestaudio)
+python manual.py --music -s "Eminem" -sa "251"
+
+# Spotify single or playlist
+python manual.py --music -s "https://open.spotify.com/track/..."
+python manual.py --music -s "https://open.spotify.com/playlist/..."
+
+# YouTube Music playlist or URL
+python manual.py --music -s "https://music.youtube.com/playlist?list=..."
+```
+
+#### Artist and Album search
+
+```bash
+# Browse an artist page (top tracks → albums → singles)
+python manual.py --artist -s "Eminem"
+
+# Search and download a full album
+python manual.py --album -s "The Marshall Mathers LP"
+
+# Combine: find all Eminem albums and select one or more
+python manual.py --album -s "Eminem"
+```
+
+`--artist` and `--album` imply `--music` — no need to pass both.
+
+#### CLI Flags Reference
+
+| Flag | Description |
+|------|-------------|
+| `--music` | Force search through YouTube Music; bypasses all video/streaming site selection |
+| `--artist` | Search by artist name; opens interactive artist page (top tracks, albums, singles) |
+| `--album` | Search by album title; loads full tracklist and prompts for selection or batch download |
+| `--auto-first` | Automatically select and download the first search result without prompting |
+| `-sa` / `--audio` | Specify a yt-dlp format ID or language filter for the audio track (e.g. `251`, `bestaudio`) |
+
+#### CLI Interactive Workflow
+
+1. **Input detection** — The CLI automatically detects whether the query is a Spotify URL, YouTube Music URL, playlist link, or plain text search.
+2. **Results table** — A numbered Rich table shows Title, Artist, Album, and Duration. Selection supports single index (`0`), ranges (`1-5`), comma lists (`0,2,4`), or `*` for all.
+3. **Audio format selection** — Available formats are fetched via `yt-dlp` and displayed in a table (ext, bitrate, size). Press Enter to use the best available format.
+4. **Batch download with retry** — After each batch, any failed tracks are listed in a table and the user is prompted to retry.
+
+---
+
+### Web GUI
+
+The music web interface is available at `/music/` and includes the following pages:
+
+#### Search (`/music/search/`)
+
+- Accepts plain text queries, Spotify URLs, YouTube Music URLs, and playlist links.
+- **Filter pills** on the results page: **Brani** (tracks only), **Album** (albums only), **Tutti** (tracks + albums together).
+- Tracks are displayed with artist links and clickable album names.
+- Albums are shown in a card grid with thumbnail, artist, year, and type. Clicking a card opens the album detail page.
+
+#### Artist Page (`/music/artist/<channel_id>/`)
+
+- **Top Tracks** — per-row checkboxes + **Scarica selezionati** (appears when ≥ 1 checked) + **Scarica tutti** button.
+- **Albums** and **Singles** — card grids that link directly to the album detail page. A download icon overlays each card on hover.
+- **Tutte le Tracce** section — lazy-loaded on demand with a single click. Fetches all album/single tracklists concurrently (up to 8 parallel requests), groups results by album with sticky headers, and provides select-all + bulk download controls.
+- **Biography** — displayed when available.
+
+#### Album Detail (`/music/album/?browse_id=…`)
+
+- Full tracklist with cover art, title, and description.
+- Per-row checkboxes + **Seleziona tutto** toggle (with indeterminate state).
+- **Scarica selezionati** — appears dynamically when at least one track is checked.
+- **Scarica tutto l'album** — queues every track at once.
+- Per-row download icon (visible on hover) → `track_detail` page for manual format selection.
+
+#### Track Detail (`/music/track/`)
+
+- Displays cover art, title, artist, and a link to open on YouTube Music.
+- Lists all available audio formats (extension, bitrate, size) as selectable radio buttons.
+- Downloads the selected format via the `start_music_download` API.
+
+#### Downloads (`/music/downloads/`)
+
+- Live queue of all in-progress and completed music downloads.
+
+---
+
+### Supported Input Types
+
+| Input | Handled as |
+|-------|------------|
+| Plain text | YouTube Music search |
+| `https://open.spotify.com/track/…` | Resolved to YouTube Music equivalent |
+| `https://open.spotify.com/playlist/…` | Full playlist fetched and resolved |
+| `https://music.youtube.com/watch?v=…` | Direct YouTube Music track |
+| `https://music.youtube.com/playlist?list=…` | YouTube Music playlist |
+| `https://youtube.com/watch?v=…` | Resolved via yt-dlp metadata |
+
+Spotify playlist pagination is handled through the internal GraphQL partner API, supporting playlists of any size.
 
 ---
 

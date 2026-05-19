@@ -52,18 +52,31 @@
     <section class="mb-12 max-w-5xl mx-auto">
         <div class="flex items-center justify-between mb-5">
             <h2 class="text-xl font-bold text-white">Brani Popolari</h2>
-            <button type="button" onclick="downloadAllTopTracks()" id="download-all-btn"
-                    class="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                </svg>
-                Scarica tutti
-            </button>
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="downloadSelectedTracks()" id="download-selected-btn"
+                        class="hidden inline-flex items-center gap-1.5 bg-white/10 hover:bg-purple-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    <span id="selected-count">Selezionati</span>
+                </button>
+                <button type="button" onclick="downloadAllTopTracks()" id="download-all-btn"
+                        class="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Scarica tutti
+                </button>
+            </div>
         </div>
         <div class="space-y-1" id="top-tracks-list">
             {% for track in artist.top_tracks %}
             <div class="track-row bg-white/5 hover:bg-white/8 border border-white/5 hover:border-purple-500/30 rounded-xl px-4 py-3 flex items-center gap-4 transition-all"
                  data-video-id="{{ track.video_id }}" data-title="{{ track.title }}" data-artist="{{ track.artist_str }}">
+                <!-- Checkbox -->
+                <input type="checkbox" class="track-checkbox w-4 h-4 rounded accent-purple-500 flex-shrink-0 cursor-pointer"
+                       data-video-id="{{ track.video_id }}" data-title="{{ track.title|escapejs }}" data-artist="{{ track.artist_str|escapejs }}"
+                       onchange="updateSelectedBtn()"/>
                 <!-- Number / play -->
                 <div class="w-6 flex-shrink-0 text-center">
                     <span class="track-number text-gray-500 text-sm font-mono items-center justify-center">{{ forloop.counter }}</span>
@@ -116,8 +129,9 @@
         <h2 class="text-xl font-bold text-white mb-5">Album</h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {% for album in artist.albums %}
-            <div class="bg-white/5 border border-white/10 hover:border-purple-500/30 hover:bg-white/8 rounded-2xl p-3 group cursor-pointer transition-all" title="{{ album.title }}">
-                <div class="aspect-square rounded-xl overflow-hidden bg-purple-900/30 mb-3">
+            <a href="{% url 'music_album_detail' %}?browse_id={{ album.browse_id }}"
+               class="bg-white/5 border border-white/10 hover:border-purple-500/30 hover:bg-white/8 rounded-2xl p-3 group cursor-pointer transition-all block">
+                <div class="aspect-square rounded-xl overflow-hidden bg-purple-900/30 mb-3 relative">
                     {% if album.thumbnail %}
                     <img src="{{ album.thumbnail }}" alt="{{ album.title }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
                     {% else %}
@@ -127,10 +141,15 @@
                         </svg>
                     </div>
                     {% endif %}
+                    <div class="absolute inset-0 bg-purple-600/0 group-hover:bg-purple-600/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <svg class="w-8 h-8 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                    </div>
                 </div>
                 <div class="text-xs font-semibold text-white truncate">{{ album.title }}</div>
                 <div class="text-xs text-gray-500 mt-0.5">{{ album.year|default:"" }}{% if album.year and album.album_type %} · {% endif %}{{ album.album_type }}</div>
-            </div>
+            </a>
             {% endfor %}
         </div>
     </section>
@@ -142,8 +161,9 @@
         <h2 class="text-xl font-bold text-white mb-5">Singoli & EP</h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {% for single in artist.singles %}
-            <div class="bg-white/5 border border-white/10 hover:border-purple-500/30 hover:bg-white/8 rounded-2xl p-3 group cursor-pointer transition-all" title="{{ single.title }}">
-                <div class="aspect-square rounded-xl overflow-hidden bg-purple-900/30 mb-3">
+            <a href="{% url 'music_album_detail' %}?browse_id={{ single.browse_id }}"
+               class="bg-white/5 border border-white/10 hover:border-purple-500/30 hover:bg-white/8 rounded-2xl p-3 group cursor-pointer transition-all block">
+                <div class="aspect-square rounded-xl overflow-hidden bg-purple-900/30 mb-3 relative">
                     {% if single.thumbnail %}
                     <img src="{{ single.thumbnail }}" alt="{{ single.title }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
                     {% else %}
@@ -153,10 +173,15 @@
                         </svg>
                     </div>
                     {% endif %}
+                    <div class="absolute inset-0 bg-purple-600/0 group-hover:bg-purple-600/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <svg class="w-8 h-8 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                    </div>
                 </div>
                 <div class="text-xs font-semibold text-white truncate">{{ single.title }}</div>
                 <div class="text-xs text-gray-500 mt-0.5">{{ single.year|default:"" }}{% if single.year %} · {% endif %}Singolo</div>
-            </div>
+            </a>
             {% endfor %}
         </div>
     </section>
@@ -172,10 +197,103 @@
     </section>
     {% endif %}
 
+    <!-- ══ ALL TRACKS (lazy) ══════════════════════════════════════════════════ -->
+    {% if artist.albums or artist.singles %}
+    <section class="max-w-5xl mx-auto mb-16" id="all-tracks-section">
+        <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-bold text-white">Tutte le Tracce</h2>
+            <!-- Controls — hidden until loaded -->
+            <div id="all-tracks-controls" class="hidden flex items-center gap-2">
+                <label class="flex items-center gap-2 cursor-pointer text-xs text-gray-400 hover:text-white transition-colors select-none">
+                    <input type="checkbox" id="all-tracks-select-all" class="w-4 h-4 rounded accent-purple-500" onchange="allTracksToggleAll(this)"/>
+                    Seleziona tutto
+                </label>
+                <button id="all-tracks-dl-selected" onclick="allTracksDownloadSelected()"
+                        class="hidden items-center gap-1.5 bg-white/10 hover:bg-purple-600 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    <span id="all-tracks-sel-label">Selezionati</span>
+                </button>
+                <button id="all-tracks-dl-all" onclick="allTracksDownloadAll()"
+                        class="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Scarica tutto
+                </button>
+            </div>
+        </div>
+
+        <!-- Trigger / Loader -->
+        <div id="all-tracks-trigger">
+            <button onclick="loadAllTracks('{{ artist.channel_id }}')" id="load-all-btn"
+                    class="w-full flex items-center justify-center gap-3 py-5 rounded-2xl border border-dashed border-purple-500/40 hover:border-purple-400 hover:bg-purple-900/10 text-purple-400 hover:text-purple-300 text-sm font-semibold transition-all group">
+                <svg class="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Carica tutte le tracce della discografia
+            </button>
+        </div>
+
+        <!-- Loading spinner (hidden by default) -->
+        <div id="all-tracks-loading" class="hidden text-center py-12">
+            <div class="inline-flex items-center gap-3 text-gray-400">
+                <svg class="w-6 h-6 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                </svg>
+                <span id="all-tracks-loading-msg">Caricamento in corso…</span>
+            </div>
+        </div>
+
+        <!-- Track list container -->
+        <div id="all-tracks-list" class="space-y-1"></div>
+    </section>
+    {% endif %}
+
 </div>
 
 <script>
 const _topTracks = [{% for track in artist.top_tracks %}{video_id:'{{ track.video_id|escapejs }}',title:'{{ track.title|escapejs }}',artist:'{{ track.artist_str|escapejs }}',format_id:'bestaudio'},{% endfor %}];
+
+// ── Top-tracks selection ────────────────────────────────────────────────────
+function updateSelectedBtn() {
+    const checked = document.querySelectorAll('.track-checkbox:checked');
+    const btn = document.getElementById('download-selected-btn');
+    const countEl = document.getElementById('selected-count');
+    if (checked.length > 0) {
+        btn.classList.remove('hidden');
+        countEl.textContent = `Scarica selezionati (${checked.length})`;
+    } else {
+        btn.classList.add('hidden');
+    }
+}
+
+async function _postDownload(tracks) {
+    const resp = await fetch("{% url 'music_start_download' %}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: JSON.stringify({tracks}),
+    });
+    return await resp.json();
+}
+
+async function downloadSelectedTracks() {
+    const checked = document.querySelectorAll('.track-checkbox:checked');
+    if (!checked.length) return;
+    const btn = document.getElementById('download-selected-btn');
+    btn.disabled = true;
+    const tracks = Array.from(checked).map(cb => ({video_id: cb.dataset.videoId, title: cb.dataset.title, artist: cb.dataset.artist, format_id: 'bestaudio'}));
+    try {
+        const data = await _postDownload(tracks);
+        if (data.status === 'ok') {
+            btn.innerHTML = `✓ ${tracks.length} download avviati!`;
+            btn.classList.add('bg-green-600');
+            setTimeout(() => window.location.href = "{% url 'music_downloads' %}", 1200);
+        } else { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
+    } catch (e) { btn.innerHTML = '✗ Errore di rete'; btn.disabled = false; }
+}
 
 async function downloadAllTopTracks() {
     const btn = document.getElementById('download-all-btn');
@@ -183,12 +301,7 @@ async function downloadAllTopTracks() {
     btn.disabled = true;
     btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Avvio...`;
     try {
-        const resp = await fetch("{% url 'music_start_download' %}", {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
-            body: JSON.stringify({tracks: _topTracks}),
-        });
-        const data = await resp.json();
+        const data = await _postDownload(_topTracks);
         if (data.status === 'ok') {
             btn.innerHTML = `✓ ${_topTracks.length} download avviati!`;
             btn.classList.replace('bg-purple-600', 'bg-green-600');
@@ -196,6 +309,132 @@ async function downloadAllTopTracks() {
         } else { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
     } catch (e) { btn.innerHTML = '✗ Errore di rete'; btn.disabled = false; }
 }
+
+// ── All-tracks lazy load ────────────────────────────────────────────────────
+let _allLoadedTracks = [];
+
+async function loadAllTracks(channelId) {
+    document.getElementById('all-tracks-trigger').classList.add('hidden');
+    document.getElementById('all-tracks-loading').classList.remove('hidden');
+
+    try {
+        const resp = await fetch(`/music/artist/${channelId}/all-tracks/`);
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+
+        _allLoadedTracks = data.tracks || [];
+        document.getElementById('all-tracks-loading-msg').textContent =
+            `${_allLoadedTracks.length} tracce caricate`;
+
+        renderAllTracks(_allLoadedTracks);
+        document.getElementById('all-tracks-loading').classList.add('hidden');
+        document.getElementById('all-tracks-controls').classList.remove('hidden');
+        document.getElementById('all-tracks-controls').classList.add('flex');
+    } catch (e) {
+        document.getElementById('all-tracks-loading').innerHTML =
+            `<p class="text-red-400 text-sm">Errore nel caricamento: ${e.message}</p>`;
+    }
+}
+
+function renderAllTracks(tracks) {
+    const container = document.getElementById('all-tracks-list');
+    container.innerHTML = '';
+
+    let lastAlbum = null;
+
+    tracks.forEach((t, i) => {
+        // Album separator header
+        const album = t.album || 'Senza album';
+        if (album !== lastAlbum) {
+            lastAlbum = album;
+            const sep = document.createElement('div');
+            sep.className = 'pt-4 pb-1 px-1';
+            sep.innerHTML = `<span class="text-xs font-semibold text-purple-400 uppercase tracking-wider">${escHtml(album)}</span>`;
+            container.appendChild(sep);
+        }
+
+        const row = document.createElement('div');
+        row.className = 'at-row group flex items-center gap-4 bg-white/5 hover:bg-white/8 border border-white/5 hover:border-purple-500/30 rounded-xl px-4 py-3 transition-all';
+        row.innerHTML = `
+            <input type="checkbox" class="at-cb w-4 h-4 rounded accent-purple-500 flex-shrink-0 cursor-pointer"
+                   data-video-id="${escHtml(t.video_id)}" data-title="${escAttr(t.title)}" data-artist="${escAttr(t.artist_str || '')}"
+                   onchange="allTracksOnCheck()"/>
+            <span class="text-gray-600 text-xs font-mono w-5 text-right flex-shrink-0">${i + 1}</span>
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold text-white truncate">${escHtml(t.title)}</div>
+                <div class="text-xs text-gray-500 truncate">${escHtml(t.artist_str || '')}</div>
+            </div>
+            <a href="/music/track/?video_id=${encodeURIComponent(t.video_id)}&title=${encodeURIComponent(t.title)}&artist=${encodeURIComponent(t.artist_str || '')}"
+               class="flex-shrink-0 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-purple-400 transition-all p-1.5 rounded-lg hover:bg-purple-900/30" title="Scegli formato">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+            </a>`;
+        container.appendChild(row);
+    });
+}
+
+function allTracksOnCheck() {
+    const checked = document.querySelectorAll('.at-cb:checked');
+    const all = document.querySelectorAll('.at-cb');
+    const btn = document.getElementById('all-tracks-dl-selected');
+    const lbl = document.getElementById('all-tracks-sel-label');
+    const saAll = document.getElementById('all-tracks-select-all');
+
+    if (checked.length > 0) {
+        btn.classList.remove('hidden'); btn.classList.add('inline-flex');
+        lbl.textContent = `Scarica selezionati (${checked.length})`;
+    } else {
+        btn.classList.add('hidden'); btn.classList.remove('inline-flex');
+    }
+    saAll.indeterminate = checked.length > 0 && checked.length < all.length;
+    saAll.checked = all.length > 0 && checked.length === all.length;
+}
+
+function allTracksToggleAll(cb) {
+    document.querySelectorAll('.at-cb').forEach(el => el.checked = cb.checked);
+    allTracksOnCheck();
+}
+
+async function allTracksDownloadSelected() {
+    const checked = Array.from(document.querySelectorAll('.at-cb:checked'));
+    if (!checked.length) return;
+    const btn = document.getElementById('all-tracks-dl-selected');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>';
+    const tracks = checked.map(cb => ({video_id: cb.dataset.videoId, title: cb.dataset.title, artist: cb.dataset.artist, format_id: 'bestaudio'}));
+    try {
+        const data = await _postDownload(tracks);
+        if (data.status === 'ok') {
+            btn.innerHTML = `✓ ${tracks.length} avviati!`;
+            btn.classList.add('bg-green-600');
+            setTimeout(() => window.location.href = "{% url 'music_downloads' %}", 1200);
+        } else { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
+    } catch (e) { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
+}
+
+async function allTracksDownloadAll() {
+    if (!_allLoadedTracks.length) return;
+    const btn = document.getElementById('all-tracks-dl-all');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Avvio...';
+    const tracks = _allLoadedTracks.map(t => ({video_id: t.video_id, title: t.title, artist: t.artist_str || '', format_id: 'bestaudio'}));
+    try {
+        const data = await _postDownload(tracks);
+        if (data.status === 'ok') {
+            btn.innerHTML = `✓ ${tracks.length} avviati!`;
+            btn.classList.replace('bg-purple-600', 'bg-green-600');
+            setTimeout(() => window.location.href = "{% url 'music_downloads' %}", 1200);
+        } else { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
+    } catch (e) { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
+}
+
+// ── Utilities ───────────────────────────────────────────────────────────────
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) { return escHtml(s); }
+
 function getCookie(name) {
     for (const c of document.cookie.split(';')) {
         const t = c.trim();

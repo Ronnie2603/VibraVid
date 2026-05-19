@@ -81,6 +81,11 @@ def setup_argument_parser(search_functions):
     parser.add_argument('--use_proxy', action='store_true', help='Enable proxy for requests')
     parser.add_argument('--extension', type=str, help='Output file extension (mkv, mp4)')
 
+    # ── Music shortcut
+    parser.add_argument('--music', action='store_true', help='Force music search via YouTube Music (shortcut for --site ytmusic). Skips all video/streaming site selection.')
+    parser.add_argument('--artist', action='store_true', help='Search YouTube Music by artist name (use with --music/-s). Shows artist page with top tracks, albums and singles.')
+    parser.add_argument('--album', action='store_true', help='Search YouTube Music by album title (use with --music/-s). Downloads all tracks in the matched album.')
+
     parser.add_argument('-UP', '--update', action='store_true', help='Auto-update to latest version (binary only)')
     parser.add_argument('--dep', action='store_true', help='Show all dependency paths (config, services, binaries)')
     parser.add_argument('--version', action='version', version=f'{__title__} {__version__}')
@@ -330,6 +335,17 @@ def main():
         if getattr(args, 'global_search', False):
             call_global_search(args.search)
             return
+
+        # ── --music / --artist / --album shortcuts: force ytmusic site ────────
+        if getattr(args, 'music', False) or getattr(args, 'artist', False) or getattr(args, 'album', False):
+            logger.info("Music flag set: forcing site selection to 'ytmusic'.")
+            args.site = 'ytmusic'
+            if selections is None:
+                selections = {}
+            if getattr(args, 'artist', False):
+                selections['artist_mode'] = True
+            if getattr(args, 'album', False):
+                selections['album_mode'] = True
 
         input_to_function, choice_labels, module_name_to_function = build_function_mappings(search_functions)
         if handle_direct_site_selection(args, input_to_function, module_name_to_function, args.search, selections):

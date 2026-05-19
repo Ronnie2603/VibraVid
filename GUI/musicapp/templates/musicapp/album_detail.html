@@ -1,0 +1,231 @@
+{% extends "musicapp/base.html" %}
+{% block title %}{{ album.title }} – Album{% endblock %}
+{% block meta_description %}Tracce di {{ album.title }} su YouTube Music{% endblock %}
+
+{% block content %}
+<div class="py-8 animate-fade-in max-w-5xl mx-auto">
+
+    <a href="javascript:history.back()" class="inline-flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 transition-colors mb-8">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+        </svg>
+        Indietro
+    </a>
+
+    <!-- Album Hero -->
+    <div class="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-10">
+        {% if album.thumbnail %}
+        <img src="{{ album.thumbnail }}" alt="{{ album.title }}"
+             class="w-44 h-44 rounded-2xl object-cover shadow-2xl ring-2 ring-purple-500/20 flex-shrink-0"/>
+        {% else %}
+        <div class="w-44 h-44 rounded-2xl bg-purple-900/40 flex items-center justify-center flex-shrink-0">
+            <svg class="w-16 h-16 text-purple-500 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+            </svg>
+        </div>
+        {% endif %}
+        <div>
+            <div class="text-xs text-purple-400 font-semibold uppercase tracking-widest mb-1">Album</div>
+            <h1 class="text-3xl sm:text-4xl font-black text-white tracking-tight">{{ album.title }}</h1>
+            {% if album.tracks %}
+            <p class="text-gray-400 text-sm mt-2">{{ album.tracks|length }} brani</p>
+            {% endif %}
+            {% if album.description %}
+            <p class="text-gray-500 text-xs mt-2 max-w-xl leading-relaxed">{{ album.description|truncatechars:200 }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Actions bar -->
+    <div class="flex items-center gap-3 mb-6">
+        <!-- Select all toggle -->
+        <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-400 hover:text-white transition-colors select-none">
+            <input type="checkbox" id="select-all-cb" class="w-4 h-4 rounded accent-purple-500" onchange="toggleSelectAll(this)"/>
+            Seleziona tutto
+        </label>
+
+        <div class="flex-1"></div>
+
+        <!-- Download selected (hidden until at least 1 checked) -->
+        <button id="download-selected-btn" onclick="downloadSelected()"
+                class="hidden items-center gap-1.5 bg-white/10 hover:bg-purple-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <span id="selected-label">Scarica selezionati</span>
+        </button>
+
+        <!-- Download all -->
+        <button id="download-all-btn" onclick="downloadAll()"
+                class="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Scarica tutto l'album
+        </button>
+    </div>
+
+    <!-- Track list -->
+    {% if album.tracks %}
+    <div class="space-y-1" id="track-list">
+        {% for track in album.tracks %}
+        <div class="track-row group flex items-center gap-4 bg-white/5 hover:bg-white/8 border border-white/5 hover:border-purple-500/30 rounded-xl px-4 py-3 transition-all">
+            <!-- Checkbox -->
+            <input type="checkbox" class="track-cb w-4 h-4 rounded accent-purple-500 flex-shrink-0 cursor-pointer"
+                   data-video-id="{{ track.video_id }}"
+                   data-title="{{ track.title|escapejs }}"
+                   data-artist="{{ track.artist_str|escapejs }}"
+                   onchange="onCheckChange()"/>
+
+            <!-- Track number -->
+            <span class="text-gray-600 text-xs font-mono w-6 text-center flex-shrink-0">{{ forloop.counter }}</span>
+
+            <!-- Thumbnail -->
+            <div class="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-purple-900/30">
+                {% if track.thumbnail %}
+                <img src="{{ track.thumbnail }}" alt="{{ track.title }}" class="w-full h-full object-cover"/>
+                {% else %}
+                <div class="w-full h-full flex items-center justify-center">
+                    <svg class="w-4 h-4 text-purple-600 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold text-white truncate">{{ track.title }}</div>
+                <div class="text-xs text-gray-500 truncate mt-0.5">
+                    {% for artist in track.artists %}
+                        {% if artist.channel_id %}
+                            <a href="{% url 'music_artist_detail' artist.channel_id %}"
+                               class="text-purple-400 hover:text-purple-300 hover:underline transition-colors">{{ artist.name }}</a>
+                        {% else %}
+                            <span>{{ artist.name }}</span>
+                        {% endif %}
+                        {% if not forloop.last %}<span class="text-gray-700">, </span>{% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Duration -->
+            {% if track.duration_seconds %}
+            <span class="flex-shrink-0 text-xs text-gray-600 font-mono w-12 text-right">
+                {% widthratio track.duration_seconds 60 1 %}:{{ track.duration_seconds|divisibleby:60|yesno:"00," }}{% with rem=track.duration_seconds|add:"0" %}{% endwith %}
+            </span>
+            {% endif %}
+
+            <!-- Single download -->
+            <a href="{% url 'music_track_detail' %}?video_id={{ track.video_id }}&title={{ track.title|urlencode }}&artist={{ track.artist_str|urlencode }}&thumbnail={{ track.thumbnail|urlencode }}"
+               class="flex-shrink-0 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-purple-400 transition-all p-1.5 rounded-lg hover:bg-purple-900/30"
+               title="Scegli formato">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-20 text-gray-500">
+        <svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+        </svg>
+        Nessuna traccia disponibile per questo album.
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+// Serialise all tracks from Django template
+const _allTracks = [
+    {% for track in album.tracks %}
+    {video_id: '{{ track.video_id|escapejs }}', title: '{{ track.title|escapejs }}', artist: '{{ track.artist_str|escapejs }}', format_id: 'bestaudio'},
+    {% endfor %}
+];
+
+function getCheckedTracks() {
+    return Array.from(document.querySelectorAll('.track-cb:checked')).map(cb => ({
+        video_id: cb.dataset.videoId,
+        title: cb.dataset.title,
+        artist: cb.dataset.artist,
+        format_id: 'bestaudio',
+    }));
+}
+
+function onCheckChange() {
+    const checked = document.querySelectorAll('.track-cb:checked');
+    const btn = document.getElementById('download-selected-btn');
+    const lbl = document.getElementById('selected-label');
+    if (checked.length > 0) {
+        btn.classList.remove('hidden');
+        btn.classList.add('inline-flex');
+        lbl.textContent = `Scarica selezionati (${checked.length})`;
+    } else {
+        btn.classList.add('hidden');
+        btn.classList.remove('inline-flex');
+    }
+    // sync select-all checkbox state
+    const all = document.querySelectorAll('.track-cb');
+    document.getElementById('select-all-cb').indeterminate = checked.length > 0 && checked.length < all.length;
+    document.getElementById('select-all-cb').checked = checked.length === all.length;
+}
+
+function toggleSelectAll(cb) {
+    document.querySelectorAll('.track-cb').forEach(el => {
+        el.checked = cb.checked;
+    });
+    onCheckChange();
+}
+
+async function _postDownload(tracks) {
+    const resp = await fetch("{% url 'music_start_download' %}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: JSON.stringify({tracks}),
+    });
+    return await resp.json();
+}
+
+async function downloadSelected() {
+    const tracks = getCheckedTracks();
+    if (!tracks.length) return;
+    const btn = document.getElementById('download-selected-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Avvio...';
+    try {
+        const data = await _postDownload(tracks);
+        if (data.status === 'ok') {
+            btn.innerHTML = `✓ ${tracks.length} download avviati!`;
+            btn.classList.add('bg-green-600');
+            setTimeout(() => window.location.href = "{% url 'music_downloads' %}", 1200);
+        } else { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
+    } catch (e) { btn.innerHTML = '✗ Errore di rete'; btn.disabled = false; }
+}
+
+async function downloadAll() {
+    if (!_allTracks.length) return;
+    const btn = document.getElementById('download-all-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Avvio...';
+    try {
+        const data = await _postDownload(_allTracks);
+        if (data.status === 'ok') {
+            btn.innerHTML = `✓ ${_allTracks.length} track avviate!`;
+            btn.classList.replace('bg-purple-600', 'bg-green-600');
+            setTimeout(() => window.location.href = "{% url 'music_downloads' %}", 1200);
+        } else { btn.innerHTML = '✗ Errore'; btn.disabled = false; }
+    } catch (e) { btn.innerHTML = '✗ Errore di rete'; btn.disabled = false; }
+}
+
+function getCookie(name) {
+    for (const c of document.cookie.split(';')) {
+        const t = c.trim();
+        if (t.startsWith(name + '=')) return decodeURIComponent(t.slice(name.length + 1));
+    }
+    return null;
+}
+</script>
+{% endblock %}

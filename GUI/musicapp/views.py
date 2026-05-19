@@ -23,9 +23,11 @@ from VibraVid.services.ytmusic.client import (
     MusicPlaylist,
     ArtistDetails,
     search_tracks,
+    search_albums,
     get_ytmusic_playlist,
     get_audio_formats,
     get_artist_details,
+    get_album_tracks,
     resolve_spotify_track,
     resolve_spotify_playlist,
     resolve_youtube_track,
@@ -125,8 +127,9 @@ def music_search(request: HttpRequest) -> HttpResponse:
     if not raw_input:
         return redirect("music_home")
 
+    search_filter = request.GET.get("filter", "tracks")  # tracks | albums | all
     input_type = detect_input_type(raw_input)
-    context: Dict[str, Any] = {"query": raw_input, "input_type": input_type}
+    context: Dict[str, Any] = {"query": raw_input, "input_type": input_type, "search_filter": search_filter}
 
     try:
         if input_type == "spotify_track":
@@ -167,8 +170,17 @@ def music_search(request: HttpRequest) -> HttpResponse:
             context["subtitle"] = "Link YouTube Music diretto"
 
         else:
-            results = search_tracks(raw_input, limit=10)
-            context["results"] = [t.to_dict() for t in results]
+            # Plain text search — support filter param
+            track_results = []
+            album_results = []
+
+            if search_filter in ("tracks", "all"):
+                track_results = search_tracks(raw_input, limit=10)
+            if search_filter in ("albums", "all"):
+                album_results = search_albums(raw_input, limit=10)
+
+            context["results"] = [t.to_dict() for t in track_results]
+            context["album_results"] = [a.to_dict() for a in album_results]
             context["mode"] = "track_results"
             context["subtitle"] = f'Risultati per "{raw_input}"'
 
@@ -177,6 +189,11 @@ def music_search(request: HttpRequest) -> HttpResponse:
         messages.error(request, f"Errore nella ricerca: {e}")
         return redirect("music_home")
 
+    context["filter_choices"] = [
+        ("tracks", "Brani"),
+        ("albums", "Album"),
+        ("all", "Tutti"),
+    ]
     return render(request, "musicapp/results.html", context)
 
 
@@ -221,6 +238,80 @@ def artist_detail(request: HttpRequest, channel_id: str) -> HttpResponse:
 
     return render(request, "musicapp/artist_detail.html", {
         "artist": artist.to_dict(),
+    })
+
+
+@require_http_methods(["GET"])
+def artist_all_tracks_json(request: HttpRequest, channel_id: str) -> JsonResponse:
+    """
+    Lazy-load API: returns ALL tracks for an artist by iterating every
+    album and single and fetching their tracklists concurrently.
+    Called via AJAX from the artist_detail page.
+    """
+    import concurrent.futures as _cf
+
+    artist = get_artist_details(channel_id)
+    if not artist:
+        return JsonResponse({"error": "Artista non trovato"}, status=404)
+
+    # Collect all album browse_ids (albums + singles/EPs)
+    album_dicts = artist.to_dict()
+    all_albums = album_dicts.get("albums", []) + album_dicts.get("singles", [])
+    browse_ids = [a["browse_id"] for a in all_albums if a.get("browse_id")]
+
+    all_tracks: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+
+    def _fetch(browse_id: str):
+        try:
+            pl = get_album_tracks(browse_id)
+            return pl.to_dict()["tracks"] if pl else []
+        except Exception:
+            return []
+
+    # Fetch all albums concurrently (max 8 workers)
+    with _cf.ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(_fetch, bid): bid for bid in browse_ids}
+        for fut in _cf.as_completed(futures):
+            for t in fut.result():
+                vid = t.get("video_id", "")
+                if vid and vid not in seen_ids:
+                    seen_ids.add(vid)
+                    all_tracks.append(t)
+
+    # Sort by album title then track order (stable enough without track_number)
+    all_tracks.sort(key=lambda t: (t.get("album") or "", t.get("title") or ""))
+
+    return JsonResponse({
+        "artist": artist.to_dict()["name"],
+        "total": len(all_tracks),
+        "tracks": all_tracks,
+    })
+
+
+# ─── Album detail ──────────────────────────────────────────────────
+
+@require_http_methods(["GET"])
+def album_detail(request: HttpRequest) -> HttpResponse:
+    """Album detail page: shows all tracks with selection + download."""
+    browse_id = request.GET.get("browse_id", "").strip()
+    if not browse_id:
+        messages.error(request, "ID album mancante.")
+        return redirect("music_home")
+
+    try:
+        playlist = get_album_tracks(browse_id)
+    except Exception as e:
+        messages.error(request, f"Errore nel caricamento dell'album: {e}")
+        return redirect("music_home")
+
+    if not playlist:
+        messages.error(request, "Album non trovato o non caricabile.")
+        return redirect("music_home")
+
+    return render(request, "musicapp/album_detail.html", {
+        "album": playlist.to_dict(),
+        "browse_id": browse_id,
     })
 
 
@@ -313,6 +404,21 @@ def get_track_formats_json(request: HttpRequest) -> JsonResponse:
     try:
         formats = get_audio_formats(video_id)
         return JsonResponse({"formats": [f.to_dict() for f in formats]})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@require_http_methods(["GET"])
+def get_album_tracks_json(request: HttpRequest) -> JsonResponse:
+    """Return album tracks as JSON for the album_detail page JS."""
+    browse_id = request.GET.get("browse_id", "").strip()
+    if not browse_id:
+        return JsonResponse({"error": "browse_id mancante"}, status=400)
+    try:
+        playlist = get_album_tracks(browse_id)
+        if not playlist:
+            return JsonResponse({"error": "Album non trovato"}, status=404)
+        return JsonResponse({"album": playlist.to_dict()})
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
