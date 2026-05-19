@@ -18,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
 
 from VibraVid.utils import config_manager
+from VibraVid.services._base.site_costant import site_constants
 from VibraVid.services.ytmusic.client import (
     MusicTrack,
     MusicPlaylist,
@@ -49,8 +50,14 @@ _music_lock = threading.Lock()
 def _music_output_dir() -> str:
     """Return the configured Music output directory (same root as Video/Serie/Movie)."""
     try:
-        return site_constants.MUSIC_FOLDER
-    except Exception:
+        folder = site_constants.MUSIC_FOLDER
+        if not os.path.isabs(folder):
+            import pathlib
+            project_root = pathlib.Path(__file__).resolve().parents[3]
+            folder = str(project_root / folder)
+        return folder
+    except Exception as e:
+        logger.error(f"[_music_output_dir] Failed to resolve music folder: {e}", exc_info=True)
         return os.path.join(os.path.expanduser("~"), "Music", "VibraVid")
 
 

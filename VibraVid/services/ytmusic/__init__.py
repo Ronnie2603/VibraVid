@@ -61,8 +61,14 @@ def _sanitize(name: str, fallback: str = "Unknown") -> str:
 def _music_output_dir() -> str:
     """Return the configured Music output directory (same root as Video/Serie/Movie)."""
     try:
-        return site_constants.MUSIC_FOLDER
-    except Exception:
+        folder = site_constants.MUSIC_FOLDER
+        if not os.path.isabs(folder):
+            import pathlib
+            project_root = pathlib.Path(__file__).resolve().parents[4]
+            folder = str(project_root / folder)
+        return folder
+    except Exception as e:
+        logger.error(f"[_music_output_dir] Failed to resolve music folder: {e}", exc_info=True)
         return os.path.join(os.path.expanduser("~"), "Music", "VibraVid")
 
 

@@ -47,7 +47,7 @@ class SiteConstant:
     
     @property
     def ROOT_PATH(self) -> str:
-        return config_manager.config.get('OUTPUT', 'root_path')
+        return config_manager.config.get('OUTPUT', 'root_path', default='Video')
     
     @property
     def FULL_URL(self) -> str:
